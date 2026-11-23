@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowDownLeft, ArrowUpRight, Loader2, LogOut, Plus, ReceiptText, Trash2 } from "lucide-react";
-import type { FinanceTransaction, Summary } from "@moni/shared";
+import type { Account, Category, FinanceTransaction, Summary } from "@moni/shared";
 import { deleteTransaction, signOut } from "./actions";
 import AddSheet from "./add-sheet";
 import CategoryIcon from "./category-icon";
+import Review from "./review";
 import CountUp from "./count-up";
 
 type Filter = "all" | "income" | "expense";
@@ -28,11 +29,17 @@ const date = new Intl.DateTimeFormat("es", { dateStyle: "medium" });
 export default function Dashboard({
   email,
   transactions,
+  pending,
+  categories,
+  accounts,
   summary,
   loadError,
 }: {
   email: string;
   transactions: FinanceTransaction[];
+  pending: FinanceTransaction[];
+  categories: Category[];
+  accounts: Account[];
   summary: Summary;
   loadError: string | null;
 }) {
@@ -80,6 +87,8 @@ export default function Dashboard({
           </div>
         </div>
       </section>
+
+      <Review pending={pending} categories={categories} accounts={accounts} />
 
       <div
         className="anim-rise flex gap-2"
@@ -137,13 +146,14 @@ export default function Dashboard({
         Añadir movimiento
       </button>
 
-      <AddSheet open={adding} onClose={() => setAdding(false)} />
+      <AddSheet open={adding} onClose={() => setAdding(false)} categories={categories} accounts={accounts} />
     </main>
   );
 }
 
 function Row({ t, isNew, index }: { t: FinanceTransaction; isNew: boolean; index: number }) {
   const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const income = t.type === "income";
   const stagger = isNew ? undefined : ({ "--delay": `${Math.min(index, 12) * 70 + 300}ms` } as React.CSSProperties);
 
@@ -152,7 +162,7 @@ function Row({ t, isNew, index }: { t: FinanceTransaction; isNew: boolean; index
       <div className="row-wrap" data-removing={removing}>
         <div>
           <div className="flex min-h-14 items-center gap-3 border-t border-divider px-4 py-2 first:border-t-0 [li:first-child_&]:border-t-0">
-            <CategoryIcon category={t.category} type={t.type} />
+            <CategoryIcon category={t.category} icon={t.categoryIcon} type={t.type} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">{t.category}</p>
               <p className="truncate text-sm text-mut">
@@ -172,6 +182,7 @@ function Row({ t, isNew, index }: { t: FinanceTransaction; isNew: boolean; index
                   await deleteTransaction(fd);
                 } catch {
                   setRemoving(false);
+                  setError("No se pudo eliminar el movimiento.");
                 }
               }}
             >
@@ -179,6 +190,11 @@ function Row({ t, isNew, index }: { t: FinanceTransaction; isNew: boolean; index
               <DeleteButton label={`Eliminar movimiento de ${t.category}`} />
             </form>
           </div>
+          {error && (
+            <p role="alert" className="px-4 pb-2 text-sm font-medium text-exp">
+              {error}
+            </p>
+          )}
         </div>
       </div>
     </li>

@@ -1,11 +1,23 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { CircleAlert, Loader2, X } from "lucide-react";
+import type { Account, Category, TransactionType } from "@moni/shared";
+import CategoryIcon from "./category-icon";
 import { addTransaction, type AddState } from "./actions";
 
 /** Modal sheet built on <dialog>: native focus trap, Esc to close, focus returns to the trigger. */
-export default function AddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function AddSheet({
+  open,
+  onClose,
+  categories,
+  accounts,
+}: {
+  open: boolean;
+  onClose: () => void;
+  categories: Category[];
+  accounts: Account[];
+}) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -25,13 +37,31 @@ export default function AddSheet({ open, onClose }: { open: boolean; onClose: ()
       aria-labelledby="add-title"
       className="sheet m-auto w-[calc(100%-2rem)] max-w-md rounded-card bg-card p-0 text-fg shadow-hero"
     >
-      {open && <AddForm onDone={() => ref.current?.close()} onCancel={() => ref.current?.close()} />}
+      {open && (
+        <AddForm
+          categories={categories}
+          accounts={accounts}
+          onDone={() => ref.current?.close()} onCancel={() => ref.current?.close()}
+        />
+      )}
     </dialog>
   );
 }
 
-function AddForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+function AddForm({
+  categories,
+  accounts,
+  onDone,
+  onCancel,
+}: {
+  categories: Category[];
+  accounts: Account[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const uid = useId();
+  const [type, setType] = useState<TransactionType>("expense");
+  const visibleCats = categories.filter((c) => c.kind === type);
   const [state, formAction, pending] = useActionState<AddState, FormData>(
     async (prev, fd) => {
       const next = await addTransaction(prev, fd);
@@ -42,6 +72,7 @@ function AddForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
   );
   const amountErr = state.fieldErrors?.amount;
   const catErr = state.fieldErrors?.category;
+  const accErr = state.fieldErrors?.account;
 
   return (
     <form action={formAction} noValidate className="flex flex-col gap-4 p-5 sm:p-6">
@@ -60,13 +91,14 @@ function AddForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
           {[
             ["expense", "Gasto"],
             ["income", "Ingreso"],
-          ].map(([v, label], i) => (
+          ].map(([v, label]) => (
             <label key={v} className="relative">
               <input
                 type="radio"
                 name="type"
                 value={v}
-                defaultChecked={i === 0}
+                checked={type === v}
+                onChange={() => setType(v as TransactionType)}
                 className="peer sr-only"
               />
               <span className="flex min-h-11 cursor-pointer items-center justify-center rounded-full text-sm font-semibold text-mut transition-colors peer-checked:bg-card peer-checked:text-fg peer-checked:shadow-chip peer-focus-visible:outline-2 peer-focus-visible:outline-acc">
@@ -99,22 +131,45 @@ function AddForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => voi
         {amountErr && <Err id={`${uid}-amount-err`}>{amountErr}</Err>}
       </div>
 
-      <div>
-        <label htmlFor={`${uid}-cat`} className="mb-1.5 block text-sm font-medium">
-          Categoría
-        </label>
-        <div className="field" data-invalid={!!catErr}>
-          <input
-            id={`${uid}-cat`}
-            name="category"
-            required
-            autoComplete="off"
-            placeholder="Comida, sueldo, transporte…"
-            aria-invalid={!!catErr}
-            aria-describedby={catErr ? `${uid}-cat-err` : undefined}
-          />
+      <fieldset aria-describedby={catErr ? `${uid}-cat-err` : undefined}>
+        <legend className="mb-1.5 text-sm font-medium">Categoría</legend>
+        {/* key resets the selection when the kind changes */}
+        <div key={type} className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto p-0.5">
+          {visibleCats.map((c) => (
+            <label key={c.id} className="relative">
+              <input type="radio" name="category_id" value={c.id} className="peer sr-only" />
+              <span className="flex min-h-11 cursor-pointer items-center gap-2 rounded-input bg-card px-2 text-sm font-medium ring-1 ring-line peer-checked:ring-2 peer-checked:ring-acc peer-focus-visible:outline-2 peer-focus-visible:outline-acc">
+                <CategoryIcon category={c.name} icon={c.icon} type={c.kind} />
+                <span className="truncate">{c.name}</span>
+              </span>
+            </label>
+          ))}
+          {visibleCats.length === 0 && <p className="col-span-2 text-sm text-mut">No hay categorías de este tipo.</p>}
         </div>
         {catErr && <Err id={`${uid}-cat-err`}>{catErr}</Err>}
+      </fieldset>
+
+      <div>
+        <label htmlFor={`${uid}-acc`} className="mb-1.5 block text-sm font-medium">
+          Cuenta
+        </label>
+        <div className="field" data-invalid={!!accErr}>
+          <select
+            id={`${uid}-acc`}
+            name="account_id"
+            required
+            defaultValue={accounts[0]?.id ?? ""}
+            aria-invalid={!!accErr}
+            aria-describedby={accErr ? `${uid}-acc-err` : undefined}
+          >
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {accErr && <Err id={`${uid}-acc-err`}>{accErr}</Err>}
       </div>
 
       <div>

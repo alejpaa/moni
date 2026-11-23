@@ -2,6 +2,11 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Briefcase,
+  Repeat,
+  RotateCcw,
+  ShoppingBag,
+  Store,
+  Banknote,
   Bus,
   Clapperboard,
   Coffee,
@@ -17,9 +22,14 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { categoryIconKey, type CategoryIconKey, type TransactionType } from "@moni/shared";
+import { categoryIconKey, type TransactionType } from "@moni/shared";
 
-const ICONS: Record<CategoryIconKey, LucideIcon> = {
+const ICONS: Record<string, LucideIcon> = {
+  "shopping-bag": ShoppingBag,
+  store: Store,
+  repeat: Repeat,
+  "rotate-ccw": RotateCcw,
+  cash: Banknote,
   briefcase: Briefcase,
   utensils: Utensils,
   "shopping-cart": ShoppingCart,
@@ -38,8 +48,17 @@ const ICONS: Record<CategoryIconKey, LucideIcon> = {
   "arrow-up-right": ArrowUpRight,
 };
 
-export default function CategoryIcon({ category, type }: { category: string; type: TransactionType }) {
-  const Icon = ICONS[categoryIconKey(category, type)];
+/** Renders the category's stored Lucide `icon`; falls back to the keyword mapping when null/unknown. */
+export default function CategoryIcon({
+  category,
+  icon,
+  type,
+}: {
+  category: string;
+  icon?: string | null;
+  type: TransactionType;
+}) {
+  const Icon = (icon && ICONS[icon]) || ICONS[categoryIconKey(category, type)];
   return (
     <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-acc-tile text-acc-ink">
       <Icon size={18} strokeWidth={2} aria-hidden />

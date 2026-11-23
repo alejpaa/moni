@@ -10,16 +10,45 @@ export type {
   CompositeTypes,
 } from "./database.types";
 export { Constants } from "./database.types";
+import type { Enums, Tables } from "./database.types";
 
-export type TransactionType = "income" | "expense";
+export type TransactionType = Enums<"transaction_type">;
+export type ReviewStatus = Enums<"review_status">;
 export type GoalPeriod = "monthly" | "yearly";
+
+export type Category = Pick<Tables<"categories">, "id" | "name" | "kind" | "icon">;
+export type Account = Pick<Tables<"accounts">, "id" | "name" | "type" | "archived">;
+
+/** Columns of `public.transactions` the web client selects. */
+export type TransactionRow = Pick<
+  Tables<"transactions">,
+  | "id"
+  | "user_id"
+  | "type"
+  | "amount"
+  | "occurred_at"
+  | "note"
+  | "category_id"
+  | "account_id"
+  | "status"
+  | "source"
+  | "merchant"
+>;
 
 export interface FinanceTransaction {
   id: string;
   userId: string;
   type: TransactionType;
   amount: number;
+  /** Category name ("Sin categoría" when none). */
   category: string;
+  categoryId: string | null;
+  /** Stored Lucide key of the category, if any. */
+  categoryIcon: string | null;
+  accountId: string | null;
+  status: ReviewStatus;
+  source: Tables<"transactions">["source"];
+  merchant?: string;
   occurredAt: string;
   note?: string;
 }
@@ -34,25 +63,22 @@ export interface SavingGoal {
   deadline?: string;
 }
 
-/** Row shape of `public.transactions` as returned by Supabase (snake_case). */
-export interface TransactionRow {
-  id: string;
-  user_id: string;
-  type: TransactionType;
-  // numeric columns arrive as strings or numbers depending on the client
-  amount: number | string;
-  category: string;
-  occurred_at: string;
-  note: string | null;
-}
-
-export function toFinanceTransaction(row: TransactionRow): FinanceTransaction {
+export function toFinanceTransaction(
+  row: TransactionRow,
+  category?: Pick<Category, "name" | "icon">,
+): FinanceTransaction {
   return {
     id: row.id,
     userId: row.user_id,
     type: row.type,
     amount: Number(row.amount),
-    category: row.category,
+    category: category?.name ?? "Sin categoría",
+    categoryId: row.category_id,
+    categoryIcon: category?.icon ?? null,
+    accountId: row.account_id,
+    status: row.status,
+    source: row.source,
+    merchant: row.merchant ?? undefined,
     occurredAt: row.occurred_at,
     note: row.note ?? undefined,
   };
