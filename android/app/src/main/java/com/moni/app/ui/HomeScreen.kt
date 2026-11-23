@@ -9,6 +9,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +72,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.moni.app.data.Account
+import com.moni.app.data.Category
 import com.moni.app.data.Transaction
 import com.moni.app.data.summary
 import com.moni.app.ui.theme.MoniColors
@@ -117,14 +130,20 @@ private class RowTracker {
 @Composable
 fun HomeScreen(
     state: UiState,
-    onAdd: (String, Double, String, String?, () -> Unit) -> Unit,
+    onAdd: (String, Double, String, String?, String?, () -> Unit) -> Unit,
     onDelete: (String) -> Unit,
+    onConfirm: (String, String?, String?) -> Unit,
+    onIgnore: (String) -> Unit,
     onSignOut: () -> Unit,
     onClearError: () -> Unit,
 ) {
     val summary = state.transactions.summary()
     var filter by rememberSaveable { mutableStateOf(Filter.All) }
     var showSheet by rememberSaveable { mutableStateOf(false) }
+    var showReview by rememberSaveable { mutableStateOf(false) }
+    val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
+    // Closes the review sheet once the last pending item is resolved.
+    LaunchedEffect(state.pending.isEmpty()) { if (state.pending.isEmpty()) showReview = false }
     val tracker = remember { RowTracker() }
     remember(state.transactions, state.loaded) { tracker.update(state.transactions.map { it.id }, state.loaded) }
 
@@ -173,6 +192,11 @@ fun HomeScreen(
                     }
                 }
             }
+            AnimatedVisibility(
+                visible = state.pending.isNotEmpty(),
+                enter = expandVertically(moniSpring()) + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) { PendingEntry(state.pending.size) { onClearError(); showReview = true } }
             state.error?.let { AlertBanner(it) }
 
             val cardShape = RoundedCornerShape(20.dp)
@@ -192,6 +216,7 @@ fun HomeScreen(
                             itemsIndexed(visible, key = { _, t -> t.id }) { index, t ->
                                 TransactionRow(
                                     t = t,
+                                    category = categoriesById[t.categoryId],
                                     index = index,
                                     last = index == visible.lastIndex,
                                     tracker = tracker,
@@ -217,9 +242,169 @@ fun HomeScreen(
             AddSheet(
                 busy = state.busy,
                 error = state.error,
-                onSubmit = { type, amount, category, note ->
-                    onAdd(type, amount, category, note) { showSheet = false }
+                categories = state.categories,
+                accounts = state.accounts,
+                onSubmit = { type, amount, categoryId, accountId, note ->
+                    onAdd(type, amount, categoryId, accountId, note) { showSheet = false }
                 },
+            )
+        }
+    }
+
+    if (showReview) {
+        ModalBottomSheet(
+            onDismissRequest = { showReview = false; onClearError() },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MoniColors.card,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ) {
+            ReviewSheet(state.pending, state.categories, state.accounts, state.error, onConfirm, onIgnore)
+        }
+    }
+}
+
+@Composable
+private fun PendingEntry(count: Int, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val label = if (count == 1) "1 movimiento por revisar" else "$count movimientos por revisar"
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .pressScale(source)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MoniColors.iconTile)
+            .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Por revisar: $label" }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LucideIcon(LucideR.drawable.lucide_ic_inbox, null, tint = MoniColors.iconStroke, size = 20)
+        Spacer(Modifier.width(12.dp))
+        Text("Por revisar", color = MoniColors.fg, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(
+            count.toString(),
+            color = MoniColors.accFg,
+            style = MaterialTheme.typography.labelLarge.tabular,
+            modifier = Modifier.clip(CircleShape).background(MoniColors.acc).padding(horizontal = 10.dp, vertical = 2.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        LucideIcon(LucideR.drawable.lucide_ic_chevron_right, null, tint = MoniColors.mut)
+    }
+}
+
+/** Selectable chip (icon + name), >= 48dp tall, color-animated like the filter pills. */
+@Composable
+private fun ChoiceChip(label: String, icon: Int?, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val bg by animateColorAsState(if (selected) MoniColors.acc else MoniColors.iconTile, label = "choiceBg")
+    val fg by animateColorAsState(if (selected) MoniColors.accFg else MoniColors.fg, label = "choiceFg")
+    Box(
+        Modifier
+            .heightIn(min = 48.dp)
+            .pressScale(source)
+            .selectable(selected = selected, enabled = enabled, interactionSource = source, indication = null, role = Role.RadioButton, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            Modifier.clip(CircleShape).background(bg).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                LucideIcon(icon, null, tint = fg, size = 16)
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ReviewSheet(
+    pending: List<Transaction>,
+    categories: List<Category>,
+    accounts: List<Account>,
+    error: String?,
+    onConfirm: (String, String?, String?) -> Unit,
+    onIgnore: (String) -> Unit,
+) {
+    Column(Modifier.navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
+        Text("Por revisar", color = MoniColors.fg, style = MaterialTheme.typography.titleLarge)
+        Text(
+            "Confirma o ignora los movimientos capturados automáticamente.",
+            color = MoniColors.mut,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(8.dp))
+        AlertBanner(error)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
+            itemsIndexed(pending, key = { _, t -> t.id }) { _, t ->
+                ReviewItem(t, categories, accounts, onConfirm, onIgnore, Modifier.animateItem())
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReviewItem(
+    t: Transaction,
+    categories: List<Category>,
+    accounts: List<Account>,
+    onConfirm: (String, String?, String?) -> Unit,
+    onIgnore: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var categoryId by rememberSaveable(t.id) { mutableStateOf(t.categoryId) }
+    var accountId by rememberSaveable(t.id) { mutableStateOf(t.accountId) }
+    var working by rememberSaveable(t.id) { mutableStateOf(false) }
+    val kindCategories = categories.filter { it.kind == t.type }
+    val title = t.merchant?.takeIf { it.isNotBlank() } ?: t.note?.takeIf { it.isNotBlank() }
+        ?: if (t.isIncome) "Ingreso" else "Gasto"
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(MoniColors.bg).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MoniColors.fg, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(formatDate(t.occurredAt), color = MoniColors.mut, style = MaterialTheme.typography.bodySmall.tabular)
+            }
+            Text(
+                (if (t.isIncome) "+" else "−") + money.format(t.amount),
+                color = if (t.isIncome) MoniColors.inc else MoniColors.exp,
+                style = MaterialTheme.typography.titleSmall.tabular.copy(fontWeight = FontWeight.SemiBold),
+            )
+        }
+        Text("Categoría", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            kindCategories.forEach { c ->
+                ChoiceChip(c.name, categoryIcon(c, t.isIncome), c.id == categoryId, !working) { categoryId = c.id }
+            }
+        }
+        if (accounts.isNotEmpty()) {
+            Text("Cuenta", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                accounts.forEach { a ->
+                    ChoiceChip(a.name, null, a.id == accountId, !working) { accountId = a.id }
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(enabled = !working, role = Role.Button) { working = true; onIgnore(t.id) }
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("Ignorar", color = MoniColors.mut, style = MaterialTheme.typography.labelLarge) }
+            PrimaryButton(
+                "Confirmar",
+                onClick = { working = true; onConfirm(t.id, categoryId, accountId) },
+                enabled = !working,
+                icon = LucideR.drawable.lucide_ic_check,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -330,6 +515,7 @@ private fun EmptyState(loaded: Boolean, filtered: Boolean) {
 @Composable
 private fun TransactionRow(
     t: Transaction,
+    category: Category?,
     index: Int,
     last: Boolean,
     tracker: RowTracker,
@@ -381,19 +567,19 @@ private fun TransactionRow(
                 Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MoniColors.iconTile),
                 contentAlignment = Alignment.Center,
             ) {
-                LucideIcon(categoryIcon(t.category, t.isIncome), null, tint = MoniColors.iconStroke)
+                LucideIcon(categoryIcon(category, t.isIncome), null, tint = MoniColors.iconStroke)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
-                    t.category,
+                    category?.name ?: t.merchant?.takeIf { it.isNotBlank() } ?: "Sin categoría",
                     color = MoniColors.fg,
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    formatDate(t.occurredAt) + (t.note?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+                    formatDate(t.occurredAt) + (listOfNotNull(t.merchant.takeIf { category != null }, t.note).firstOrNull { !it.isNullOrBlank() }?.let { " · $it" } ?: ""),
                     color = MoniColors.mut,
                     style = MaterialTheme.typography.bodySmall.tabular,
                     maxLines = 1,
@@ -415,26 +601,37 @@ private fun TransactionRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddSheet(
     busy: Boolean,
     error: String?,
-    onSubmit: (String, Double, String, String?) -> Unit,
+    categories: List<Category>,
+    accounts: List<Account>,
+    onSubmit: (String, Double, String, String?, String?) -> Unit,
 ) {
     var type by rememberSaveable { mutableStateOf(0) } // 0 = Gasto, 1 = Ingreso
     var amount by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("") }
+    var categoryId by rememberSaveable { mutableStateOf<String?>(null) }
+    var accountPick by rememberSaveable { mutableStateOf<String?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf(false) }
 
+    val kind = if (type == 1) "income" else "expense"
+    val shown = categories.filter { it.kind == kind }
+    // Switching Gasto/Ingreso drops a category of the other kind.
+    val category = shown.firstOrNull { it.id == categoryId }
+    // Default: the first non-archived account (Efectivo is seeded per workspace).
+    val accountId = accountPick ?: accounts.firstOrNull { !it.archived }?.id
+
     val value = amount.replace(',', '.').toDoubleOrNull()
     val amountError = if (submitted && (value == null || value <= 0)) "Introduce un monto mayor que 0" else null
-    val categoryError = if (submitted && category.isBlank()) "Escribe una categoría (p. ej. Comida)" else null
+    val categoryError = if (submitted && category == null) "Elige una categoría" else null
 
     fun submit() {
         submitted = true
-        if (busy || value == null || value <= 0 || category.isBlank()) return
-        onSubmit(if (type == 1) "income" else "expense", value, category.trim(), note.trim().ifBlank { null })
+        if (busy || value == null || value <= 0 || category == null) return
+        onSubmit(kind, value, category.id, accountId, note.trim().ifBlank { null })
     }
 
     Column(
@@ -462,20 +659,24 @@ private fun AddSheet(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
-            value = category,
-            onValueChange = { category = it },
-            label = { Text("Categoría") },
-            singleLine = true,
-            enabled = !busy,
-            isError = categoryError != null,
-            shape = FieldShape,
-            colors = moniFieldColors(),
-            leadingIcon = { LucideIcon(categoryIcon(category, type == 1), null, tint = MoniColors.iconStroke) },
-            supportingText = categoryError?.let { { FieldMessage(it, true) } },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Text("Categoría", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
+        if (shown.isEmpty()) {
+            Text("Cargando categorías…", color = MoniColors.mut, style = MaterialTheme.typography.bodyMedium)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            shown.forEach { c ->
+                ChoiceChip(c.name, categoryIcon(c, type == 1), c.id == category?.id, !busy) { categoryId = c.id }
+            }
+        }
+        categoryError?.let { FieldMessage(it, true) }
+        if (accounts.isNotEmpty()) {
+            Text("Cuenta", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                accounts.forEach { a ->
+                    ChoiceChip(a.name, null, a.id == accountId, !busy) { accountPick = a.id }
+                }
+            }
+        }
         OutlinedTextField(
             value = note,
             onValueChange = { note = it },

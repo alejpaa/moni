@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                         state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = MoniColors.acc)
                         }
-                        state.signedIn -> HomeScreen(state, vm::add, vm::delete, vm::signOut, vm::clearError)
+                        state.signedIn -> HomeScreen(state, vm::add, vm::delete, vm::confirm, vm::ignore, vm::signOut, vm::clearError)
                         else -> LoginScreen(state.error, state.notice, state.busy, vm::signIn, vm::signUp, vm::clearError)
                     }
                 }

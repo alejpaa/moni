@@ -2,6 +2,8 @@ package com.moni.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.moni.app.data.Account
+import com.moni.app.data.Category
 import com.moni.app.data.Transaction
 import com.moni.app.data.TransactionRepository
 import com.moni.app.data.supabase
@@ -20,6 +22,10 @@ data class UiState(
     val signedIn: Boolean = false,
     val email: String? = null,
     val transactions: List<Transaction> = emptyList(),
+    /** Rows with status=pending ("por revisar"). */
+    val pending: List<Transaction> = emptyList(),
+    val categories: List<Category> = emptyList(),
+    val accounts: List<Account> = emptyList(),
     /** True once the first transactions fetch finished. */
     val loaded: Boolean = false,
     /** A user-initiated request (sign in/up, add) is in flight. */
@@ -65,15 +71,30 @@ class MoniViewModel(
     fun refresh() = run {
         val items = repo.list()
         _state.update { it.copy(transactions = items, loaded = true) }
+        // Secondary data: a failure here must not hide the main list.
+        runCatching { repo.listPending() }.onSuccess { p -> _state.update { it.copy(pending = p) } }
+        runCatching { repo.categories() }.onSuccess { c -> _state.update { it.copy(categories = c) } }
+        runCatching { repo.accounts() }.onSuccess { a -> _state.update { it.copy(accounts = a) } }
     }
 
     /** [onDone] runs on success so the UI can close the form. */
-    fun add(type: String, amount: Double, category: String, note: String?, onDone: () -> Unit = {}) =
+    fun add(type: String, amount: Double, categoryId: String, accountId: String?, note: String?, onDone: () -> Unit = {}) =
         run(busy = true) {
-            repo.add(type, amount, category, note)
+            repo.add(type, amount, categoryId, accountId, note)
             _state.update { it.copy(transactions = repo.list(), loaded = true) }
             onDone()
         }
+
+    /** Confirms a pending row (optionally with a new category/account). */
+    fun confirm(id: String, categoryId: String?, accountId: String?) = run {
+        repo.review(id, "confirmed", categoryId, accountId)
+        _state.update { it.copy(pending = it.pending.filterNot { t -> t.id == id }, transactions = repo.list()) }
+    }
+
+    fun ignore(id: String) = run {
+        repo.review(id, "ignored")
+        _state.update { s -> s.copy(pending = s.pending.filterNot { it.id == id }) }
+    }
 
     fun delete(id: String) = run {
         repo.delete(id)
@@ -113,6 +134,11 @@ fun friendlyError(e: Throwable): String {
             "Confirma tu email antes de entrar"
         "rate limit" in msg || "over_email_send_rate_limit" in msg || "too many" in msg ->
             "Demasiados intentos. Espera un momento e inténtalo de nuevo"
+        "row-level security" in msg || "permission denied" in msg || "42501" in msg ->
+            "No tienes permiso para hacer esto"
+        "foreign key" in msg || "23503" in msg -> "La categoría o cuenta ya no existe. Actualiza e inténtalo de nuevo"
+        "jwt expired" in msg || "jwt" in msg && "invalid" in msg ->
+            "Tu sesión expiró. Vuelve a entrar"
         "invalid" in msg && "email" in msg -> "El email no es válido"
         e is IOException || "unable to resolve host" in msg || "timeout" in msg || "timed out" in msg ||
             "failed to connect" in msg || "connect" in msg && "refused" in msg ->

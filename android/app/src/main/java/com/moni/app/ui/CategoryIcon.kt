@@ -38,3 +38,32 @@ fun categoryIcon(category: String, isIncome: Boolean): Int {
     }
     return if (isIncome) LucideR.drawable.lucide_ic_arrow_down_left else LucideR.drawable.lucide_ic_arrow_up_right
 }
+
+private val iconKeys: Map<String, Int> = mapOf(
+    "utensils" to LucideR.drawable.lucide_ic_utensils,
+    "shopping-cart" to LucideR.drawable.lucide_ic_shopping_cart,
+    "shopping-bag" to LucideR.drawable.lucide_ic_shopping_bag,
+    "bus" to LucideR.drawable.lucide_ic_bus,
+    "house" to LucideR.drawable.lucide_ic_house,
+    "zap" to LucideR.drawable.lucide_ic_zap,
+    "heart-pulse" to LucideR.drawable.lucide_ic_heart_pulse,
+    "clapperboard" to LucideR.drawable.lucide_ic_clapperboard,
+    "graduation-cap" to LucideR.drawable.lucide_ic_graduation_cap,
+    "plane" to LucideR.drawable.lucide_ic_plane,
+    "repeat" to LucideR.drawable.lucide_ic_repeat,
+    "arrow-up-right" to LucideR.drawable.lucide_ic_arrow_up_right,
+    "arrow-down-left" to LucideR.drawable.lucide_ic_arrow_down_left,
+    "briefcase" to LucideR.drawable.lucide_ic_briefcase,
+    "gift" to LucideR.drawable.lucide_ic_gift,
+    "store" to LucideR.drawable.lucide_ic_store,
+    "rotate-ccw" to LucideR.drawable.lucide_ic_rotate_ccw,
+    "coffee" to LucideR.drawable.lucide_ic_coffee,
+    "fuel" to LucideR.drawable.lucide_ic_fuel,
+    "piggy-bank" to LucideR.drawable.lucide_ic_piggy_bank,
+    "wallet" to LucideR.drawable.lucide_ic_wallet,
+)
+
+/** Icon for a stored category: its Lucide `icon` key, else the keyword mapping by name, else a per-type default. */
+@DrawableRes
+fun categoryIcon(c: com.moni.app.data.Category?, isIncome: Boolean): Int =
+    c?.icon?.let { iconKeys[it.trim().lowercase()] } ?: categoryIcon(c?.name.orEmpty(), isIncome)
