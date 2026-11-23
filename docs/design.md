@@ -13,8 +13,8 @@ Rebranding (iniciado 2026-11-22): aspecto **moderno y minimalista**, con **anima
 | Paleta de colores | ✅ **J4 Lavanda & Grafito — modo claro** (2026-11-22). Modo oscuro: pendiente de afinar |
 | Tipografía | ✅ **Space Grotesk** (2026-11-22) |
 | Forma (radios, sombras, densidad) | ✅ **S1 Suave** (2026-11-22) |
-| Animaciones | Pendiente |
-| Componentes clave (balance, lista, añadir) | Pendiente |
+| Animaciones | ✅ **M2 Fluido** (2026-11-22) |
+| Componentes clave (balance, lista, añadir) | Propuesta base (ver abajo), se valida al implementar |
 
 ## Paleta elegida: J4 Lavanda & Grafito (modo claro)
 
@@ -79,6 +79,43 @@ Espaciado: márgenes de pantalla 16px (móvil) / 32px (web), separación entre b
 | S2 | Nítido | Radios pequeños (6–10px), bordes finos, sin sombras, compacto. Tipo herramienta. |
 | S3 | Flotante | Cada movimiento es una pastilla suelta (radio 18px), botón redondo flotante (+). Ligero. |
 | S4 | Contorno | Bordes grafito de 1.5px con sombra sólida lavanda desplazada. Gráfico y juguetón. |
+
+## Animaciones elegidas: M2 Fluido
+
+Vivo pero controlado: curvas tipo muelle con rebote suave, entradas escalonadas, números que cuentan.
+
+| Momento | Animación | Web (CSS) | Android (Compose) |
+|---|---|---|---|
+| Curva base | Muelle con leve rebote | `cubic-bezier(.34,1.56,.64,1)` | `spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)` |
+| Entrada de pantalla | Bloques suben 18px + escala .96→1 + fundido, 520ms | `@keyframes` con `animation-delay` | `AnimatedVisibility(enter = fadeIn() + slideInVertically { it/6 } + scaleIn(0.96f))` |
+| Escalonado de lista | 70ms entre filas | `animation-delay: calc(70ms * i)` | `LaunchedEffect` + delay por índice o `animateItem()` |
+| Tarjeta de balance | Escala .92→1 al entrar | keyframes | `scaleIn(initialScale = 0.92f)` |
+| Balance (número) | Cuenta desde el valor anterior, ~900ms al cargar / 500ms al cambiar, ease-out cúbico | `requestAnimationFrame` | `animateFloatAsState(tween(500, easing = EaseOutCubic))` |
+| Nuevo movimiento | Entra desde la izquierda (-30px) con escala .9→1 y fondo lavanda tenue `#F4F1FD` que se desvanece | keyframes | `Modifier.animateItem()` + `animateColorAsState` |
+| Pulsar botón | Escala 0.94 (90ms) y vuelve con rebote (260ms) | `:active` + `transition` | `Modifier.graphicsLayer { scale }` con `animateFloatAsState(spring)` según `interactionSource` |
+| Eliminar | Fundido + colapso de altura, 250ms | `transition` en grid-rows | `animateItem()` |
+
+Reglas: nada dura más de ~600ms salvo el conteo inicial del balance; no animar en cada scroll; respetar `prefers-reduced-motion` y la escala de animaciones del sistema.
+
+### Opciones consideradas
+
+| Opción | Nombre | Descripción |
+|---|---|---|
+| M1 | Sutil | Fundido + subida de 6px, ~250ms ease-out. Números sin animar. Botón escala 0.98 al pulsar. |
+| M2 | Fluido | Curva tipo muelle con rebote suave (~500ms), lista escalonada (70ms entre filas), balance cuenta hacia arriba, nuevo movimiento entra deslizando con escala. |
+| M3 | Expresivo | Balance se revela de arriba abajo con brillo, lista entra lateral con desenfoque, monto del balance late al cambiar (~700ms). |
+
+Todas respetan `prefers-reduced-motion` (web) y la escala de animaciones del sistema (Android).
+
+## Componentes clave (propuesta base)
+
+Derivados de las maquetas aprobadas (paleta J4 claro + Space Grotesk + S1 + M2):
+
+- **Cabecera**: etiqueta `MONI` (10px, 600, tracking .12em, `mut`) + título "Tus finanzas" (22px, 700).
+- **Tarjeta de balance (hero)**: fondo `hero`, texto `heroFg`; "Balance" pequeño al 70%; monto 30–32px 700 tabular; fila ↑ ingresos / ↓ gastos.
+- **Filtros**: chips pill Todo / Ingresos / Gastos; activo en `acc` con texto blanco.
+- **Lista de movimientos**: tarjeta blanca radio 20px; filas con icono de categoría (cuadro 10px, fondo `#EFEBFB`), nombre 600, fecha `mut`, monto alineado a la derecha en `inc` / `exp` con signo + / −.
+- **Añadir**: botón primario ancho completo "Añadir movimiento" (radio 18px, sombra lavanda) que abre una hoja/formulario.
 
 ## Historial de rondas de paleta
 
