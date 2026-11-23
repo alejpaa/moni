@@ -1,3 +1,16 @@
+// Generated from the Supabase schema: `supabase gen types typescript --project-id xyswhlasctqtqxefndkr > packages/shared/src/database.types.ts`.
+// Regenerate after every migration. See docs/database.md.
+export type {
+  Database,
+  Json,
+  Tables,
+  TablesInsert,
+  TablesUpdate,
+  Enums,
+  CompositeTypes,
+} from "./database.types";
+export { Constants } from "./database.types";
+
 export type TransactionType = "income" | "expense";
 export type GoalPeriod = "monthly" | "yearly";
 
