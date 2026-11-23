@@ -1,0 +1,245 @@
+package com.moni.app.ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.R as LucideR
+import com.moni.app.data.Category
+import com.moni.app.ui.theme.MoniColors
+
+/** Editing target: null = list, id = "" -> new, else existing category. */
+private data class Editing(val category: Category?)
+
+/** Body of the "Gestionar categorías" sheet: list <-> form, inside the same sheet. */
+@Composable
+internal fun CategoriesContent(state: ProfileState, vm: ProfileViewModel, onChanged: () -> Unit) {
+    var kindIdx by rememberSaveable { mutableStateOf(0) }
+    var editing by remember { mutableStateOf<Editing?>(null) }
+    val kind = if (kindIdx == 0) "expense" else "income"
+
+    val target = editing
+    if (target == null) {
+        CategoryList(
+            state = state,
+            kindIdx = kindIdx,
+            onKind = { kindIdx = it },
+            onNew = { vm.clearMessages(); editing = Editing(null) },
+            onEdit = { vm.clearMessages(); editing = Editing(it) },
+            onRestore = { c -> vm.setArchived(c.id, false, {}, onChanged) },
+        )
+    } else {
+        CategoryForm(
+            state = state,
+            category = target.category,
+            initialKind = kind,
+            onBack = { vm.clearMessages(); editing = null },
+            onSave = { name, k, icon ->
+                val c = target.category
+                if (c == null) vm.createCategory(name, k, icon, { editing = null }, onChanged)
+                else vm.updateCategory(c.id, name, icon, { editing = null }, onChanged)
+            },
+            onArchive = { c -> vm.setArchived(c.id, true, { editing = null }, onChanged) },
+        )
+    }
+}
+
+@Composable
+private fun CategoryList(
+    state: ProfileState,
+    kindIdx: Int,
+    onKind: (Int) -> Unit,
+    onNew: () -> Unit,
+    onEdit: (Category) -> Unit,
+    onRestore: (Category) -> Unit,
+) {
+    val kind = if (kindIdx == 0) "expense" else "income"
+    var showArchived by rememberSaveable { mutableStateOf(false) }
+    val active = state.categories.filter { it.kind == kind && !it.archived }
+    val archived = state.categories.filter { it.kind == kind && it.archived }
+    SheetColumn {
+        Text("Categorías", color = MoniColors.fg, style = MaterialTheme.typography.titleMedium)
+        SegmentedControl(listOf("Gasto", "Ingreso"), kindIdx, onKind)
+        AlertBanner(state.error)
+        Column(Modifier.fillMaxWidth().heightIn(min = 320.dp)) {
+            if (active.isEmpty()) {
+                Text(
+                    "No hay categorías de este tipo", color = MoniColors.mut,
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 16.dp),
+                )
+            }
+            active.forEach { c -> CategoryRow(c, onClick = { onEdit(c) }) }
+            if (archived.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button) { showArchived = !showArchived },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Archivadas (${archived.size})", color = MoniColors.mut, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    LucideIcon(
+                        if (showArchived) LucideR.drawable.lucide_ic_chevron_up else LucideR.drawable.lucide_ic_chevron_down,
+                        null, tint = MoniColors.mut,
+                    )
+                }
+                AnimatedVisibility(showArchived) {
+                    Column {
+                        archived.forEach { c ->
+                            CategoryRow(c, onClick = null, dim = true) {
+                                TextButton(onClick = { onRestore(c) }, enabled = !state.busy) {
+                                    Text("Restaurar", color = MoniColors.iconStroke)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        PrimaryButton("Nueva categoría", onClick = onNew, icon = LucideR.drawable.lucide_ic_plus)
+    }
+}
+
+@Composable
+private fun CategoryRow(c: Category, onClick: (() -> Unit)?, dim: Boolean = false, trailing: @Composable () -> Unit = {}) {
+    val base = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+    Row(
+        (if (onClick != null) base.clickable(role = Role.Button, onClick = onClick) else base).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconTile(categoryIcon(c, c.kind == "income"), dim)
+        Spacer(Modifier.width(14.dp))
+        Text(
+            c.name, color = if (dim) MoniColors.mut else MoniColors.fg,
+            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f),
+        )
+        if (onClick != null) LucideIcon(LucideR.drawable.lucide_ic_chevron_right, null, tint = MoniColors.mut)
+        trailing()
+    }
+}
+
+@Composable
+private fun IconTile(res: Int, dim: Boolean = false) {
+    Box(
+        Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(MoniColors.iconTile),
+        contentAlignment = Alignment.Center,
+    ) { LucideIcon(res, null, tint = if (dim) MoniColors.mut else MoniColors.iconStroke, size = 20) }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategoryForm(
+    state: ProfileState,
+    category: Category?,
+    initialKind: String,
+    onBack: () -> Unit,
+    onSave: (name: String, kind: String, icon: String) -> Unit,
+    onArchive: (Category) -> Unit,
+) {
+    val isNew = category == null
+    var name by remember { mutableStateOf(category?.name.orEmpty()) }
+    var kindIdx by remember { mutableStateOf(if ((category?.kind ?: initialKind) == "income") 1 else 0) }
+    var icon by remember {
+        mutableStateOf(
+            category?.icon?.takeIf { it in iconKeys } ?: (if (kindIdx == 1) "arrow-down-left" else "arrow-up-right"),
+        )
+    }
+    var confirmArchive by remember { mutableStateOf(false) }
+    val kind = if (kindIdx == 1) "income" else "expense"
+
+    SheetColumn {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (isNew) "Nueva categoría" else "Editar categoría", color = MoniColors.fg,
+                style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onBack, enabled = !state.busy) { Text("Volver", color = MoniColors.iconStroke) }
+        }
+        OutlinedTextField(
+            value = name, onValueChange = { name = it }, label = { Text("Nombre") },
+            singleLine = true, enabled = !state.busy, shape = FieldShape, colors = moniFieldColors(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (isNew) {
+            Text("Tipo", color = MoniColors.mut, style = MaterialTheme.typography.labelLarge)
+            SegmentedControl(listOf("Gasto", "Ingreso"), kindIdx, { kindIdx = it })
+        }
+        Text("Icono", color = MoniColors.mut, style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            iconKeys.forEach { (key, res) ->
+                val selected = key == icon
+                val source = remember { MutableInteractionSource() }
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .pressScale(source)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (selected) MoniColors.acc else MoniColors.iconTile)
+                        .selectable(selected = selected, enabled = !state.busy, interactionSource = source, indication = null, role = Role.RadioButton) { icon = key },
+                    contentAlignment = Alignment.Center,
+                ) { LucideIcon(res, key, tint = if (selected) MoniColors.accFg else MoniColors.iconStroke, size = 22) }
+            }
+        }
+        AlertBanner(state.error)
+        PrimaryButton(
+            if (state.busy) "Guardando…" else "Guardar",
+            onClick = { onSave(name, kind, icon) },
+            enabled = !state.busy && name.isNotBlank(), loading = state.busy,
+        )
+        if (category != null) {
+            TextButton(
+                onClick = { confirmArchive = true }, enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                LucideIcon(LucideR.drawable.lucide_ic_archive, null, tint = MoniColors.exp, size = 16)
+                Spacer(Modifier.width(8.dp))
+                Text("Archivar", color = MoniColors.exp)
+            }
+        }
+    }
+
+    if (confirmArchive && category != null) {
+        AlertDialog(
+            onDismissRequest = { confirmArchive = false },
+            containerColor = MoniColors.card,
+            title = { Text("¿Archivar \"${category.name}\"?", color = MoniColors.fg) },
+            text = {
+                Text(
+                    "Dejará de aparecer al registrar movimientos. Tus movimientos anteriores se conservan y puedes restaurarla cuando quieras.",
+                    color = MoniColors.mut,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmArchive = false; onArchive(category) }) { Text("Archivar", color = MoniColors.exp) }
+            },
+            dismissButton = { TextButton(onClick = { confirmArchive = false }) { Text("Cancelar", color = MoniColors.fg) } },
+        )
+    }
+}

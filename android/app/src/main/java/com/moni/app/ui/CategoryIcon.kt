@@ -39,7 +39,7 @@ fun categoryIcon(category: String, isIncome: Boolean): Int {
     return if (isIncome) LucideR.drawable.lucide_ic_arrow_down_left else LucideR.drawable.lucide_ic_arrow_up_right
 }
 
-private val iconKeys: Map<String, Int> = mapOf(
+internal val iconKeys: Map<String, Int> = mapOf(
     "utensils" to LucideR.drawable.lucide_ic_utensils,
     "shopping-cart" to LucideR.drawable.lucide_ic_shopping_cart,
     "shopping-bag" to LucideR.drawable.lucide_ic_shopping_bag,
@@ -61,6 +61,24 @@ private val iconKeys: Map<String, Int> = mapOf(
     "fuel" to LucideR.drawable.lucide_ic_fuel,
     "piggy-bank" to LucideR.drawable.lucide_ic_piggy_bank,
     "wallet" to LucideR.drawable.lucide_ic_wallet,
+    "car" to LucideR.drawable.lucide_ic_car,
+    "heart" to LucideR.drawable.lucide_ic_heart,
+    "music" to LucideR.drawable.lucide_ic_music,
+    "book-open" to LucideR.drawable.lucide_ic_book_open,
+    "smartphone" to LucideR.drawable.lucide_ic_smartphone,
+    "gamepad-2" to LucideR.drawable.lucide_ic_gamepad_2,
+    "shirt" to LucideR.drawable.lucide_ic_shirt,
+    "dumbbell" to LucideR.drawable.lucide_ic_dumbbell,
+    "baby" to LucideR.drawable.lucide_ic_baby,
+    "paw-print" to LucideR.drawable.lucide_ic_paw_print,
+    "wifi" to LucideR.drawable.lucide_ic_wifi,
+    "landmark" to LucideR.drawable.lucide_ic_landmark,
+    "credit-card" to LucideR.drawable.lucide_ic_credit_card,
+    "receipt" to LucideR.drawable.lucide_ic_receipt,
+    "trending-up" to LucideR.drawable.lucide_ic_trending_up,
+    "banknote" to LucideR.drawable.lucide_ic_banknote,
+    "sparkles" to LucideR.drawable.lucide_ic_sparkles,
+    "tag" to LucideR.drawable.lucide_ic_tag,
 )
 
 /** Icon for a stored category: its Lucide `icon` key, else the keyword mapping by name, else a per-type default. */

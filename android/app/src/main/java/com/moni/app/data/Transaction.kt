@@ -50,6 +50,13 @@ data class Account(
     val id: String,
     val name: String,
     val type: String,
+    @SerialName("opening_balance") val openingBalance: Double = 0.0,
+    val institution: String? = null,
+    val last4: String? = null,
+    val color: String? = null,
+    @SerialName("credit_limit") val creditLimit: Double? = null,
+    @SerialName("closing_day") val closingDay: Int? = null,
+    @SerialName("due_day") val dueDay: Int? = null,
     val archived: Boolean = false,
 )
 

@@ -47,7 +47,10 @@ class TransactionRepository {
         }.decodeList()
 
     suspend fun accounts(): List<Account> =
-        supabase.from("accounts").select(Columns.list("id", "name", "type", "archived")) {
+        supabase.from("accounts").select(Columns.list(
+            "id", "name", "type", "opening_balance", "institution", "last4", "color",
+            "credit_limit", "closing_day", "due_day", "archived",
+        )) {
             filter { eq("archived", false) }
             order("created_at", Order.ASCENDING)
         }.decodeList()

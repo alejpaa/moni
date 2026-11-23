@@ -15,7 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.moni.app.ui.HomeScreen
+import com.moni.app.ui.AppShell
 import com.moni.app.ui.LoginScreen
 import com.moni.app.ui.MoniViewModel
 import com.moni.app.ui.theme.MoniColors
@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
                         state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = MoniColors.acc)
                         }
-                        state.signedIn -> HomeScreen(state, vm::add, vm::delete, vm::confirm, vm::ignore, vm::signOut, vm::clearError)
+                        state.signedIn -> AppShell(state, vm)
                         else -> LoginScreen(state.error, state.notice, state.busy, vm::signIn, vm::signUp, vm::clearError)
                     }
                 }
