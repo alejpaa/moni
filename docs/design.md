@@ -12,7 +12,7 @@ Rebranding (iniciado 2026-11-22): aspecto **moderno y minimalista**, con **anima
 |---|---|
 | Paleta de colores | ✅ **J4 Lavanda & Grafito — modo claro** (2026-11-22). Modo oscuro: pendiente de afinar |
 | Tipografía | ✅ **Space Grotesk** (2026-11-22) |
-| Forma (radios, sombras, densidad) | Pendiente |
+| Forma (radios, sombras, densidad) | ✅ **S1 Suave** (2026-11-22) |
 | Animaciones | Pendiente |
 | Componentes clave (balance, lista, añadir) | Pendiente |
 
@@ -55,6 +55,30 @@ Todas en Google Fonts (web vía `next/font/google`, Android vía Downloadable Fo
 | T2 | Bricolage Grotesque | Grotesca con carácter, formas ligeramente irregulares. Personalidad propia. |
 | T3 | Instrument Serif (títulos y balance) + Instrument Sans (resto) | Editorial, de autor. |
 | T4 | Space Grotesk | Técnica y geométrica, guiños retro. Producto digital. |
+
+## Forma elegida: S1 Suave
+
+Aireado y premium: radios grandes, sombras difusas teñidas, **sin bordes** en tarjetas.
+
+| Elemento | Radio | Sombra / borde |
+|---|---|---|
+| Tarjeta de balance (hero) | 22px | `0 10px 24px -10px rgba(43,42,47,.45)` |
+| Tarjeta / lista | 20px | `0 6px 20px -8px rgba(31,30,34,.12)`; divisores internos `#F0EEF2` 1px |
+| Botón primario | 18px | `0 8px 18px -8px rgba(156,140,217,.8)` (sombra lavanda) |
+| Chips / filtros | pill (999px) | `0 1px 2px rgba(0,0,0,.06)` |
+| Icono de categoría | 10px | fondo `#EFEBFB` (lavanda muy clara) |
+| Inputs | 14px | fondo `card`, foco con anillo `acc` 2px |
+
+Espaciado: márgenes de pantalla 16px (móvil) / 32px (web), separación entre bloques 12–16px, filas de lista ~56px de alto. Compose: `RoundedCornerShape(22.dp)` etc. y `Modifier.shadow(elevation, shape, ambientColor/spotColor)` con los colores anteriores.
+
+### Opciones consideradas
+
+| Opción | Nombre | Descripción |
+|---|---|---|
+| S1 | Suave | Radios grandes (18–22px), sombras difusas teñidas, sin bordes. Aireado y premium. |
+| S2 | Nítido | Radios pequeños (6–10px), bordes finos, sin sombras, compacto. Tipo herramienta. |
+| S3 | Flotante | Cada movimiento es una pastilla suelta (radio 18px), botón redondo flotante (+). Ligero. |
+| S4 | Contorno | Bordes grafito de 1.5px con sombra sólida lavanda desplazada. Gráfico y juguetón. |
 
 ## Historial de rondas de paleta
 
