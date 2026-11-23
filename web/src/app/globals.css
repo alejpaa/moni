@@ -118,6 +118,10 @@ h2 {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes peek-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.85); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -126,6 +130,7 @@ h2 {
 .anim-hero { animation: hero-in 520ms var(--spring) both; }
 .anim-new { animation: new-item 700ms var(--spring) both; }
 .anim-error { animation: fade-rise 250ms ease-out both; }
+.anim-peek { animation: peek-in 560ms var(--spring) both; animation-delay: 120ms; }
 .anim-spin { animation: spin 800ms linear infinite; }
 
 dialog.sheet[open] { animation: sheet-in 400ms var(--spring) both; }

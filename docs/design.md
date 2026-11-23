@@ -14,6 +14,8 @@ Rebranding (iniciado 2026-11-22): aspecto **moderno y minimalista**, con **anima
 | Tipografía | ✅ **Space Grotesk** (2026-11-22) |
 | Forma (radios, sombras, densidad) | ✅ **S1 Suave** (2026-11-22) |
 | Animaciones | ✅ **M2 Fluido** (2026-11-22) |
+| Logo | ✅ **L1** isotipo (cara de mono en cuadro grafito) + wordmark `moni` (2026-11-22). SVG en `docs/brand/` |
+| Mascota | ✅ **M3** principal (mono asomado sobre moneda $); M2, M4 y M6 como variantes para distintas partes de la app, ubicación por definir (2026-11-22) |
 | Componentes clave (balance, lista, añadir) | Propuesta base (ver abajo), se valida al implementar |
 
 ## Paleta elegida: J4 Lavanda & Grafito (modo claro)
@@ -159,6 +161,31 @@ Pantalla centrada (web: tarjeta S1 de máx. 400px; Android: pantalla completa co
 - **Estado de envío**: botón deshabilitado con spinner y texto "Entrando…" / "Creando cuenta…"; evita doble envío. Enter / acción IME "Done" envía.
 - **Accesibilidad**: contraste AA, objetivos táctiles ≥ 44px (48dp en Android), orden de foco lógico, sin depender solo del color.
 - **Animación (M2)**: la tarjeta entra con escala .96→1 y fundido; el cambio de modo anima el indicador del control segmentado con muelle; los errores aparecen con fundido + subida.
+
+## Marca: logo y mascota
+
+Mascota: un mono tranquilo y amable, flat geométrico, con el dinero como dólar `$` dorado. Paleta J4 + un único acento extra **dorado `#E3B95C`**, solo para el elemento de dinero (moneda, `$`). Exploración generada con IA (agy, Gemini Hydrogen) en [`docs/brand/exploracion/`](brand/exploracion/): son referencias de dirección, no archivos finales.
+
+- **Logo elegido: L1** ([logo-1.png](brand/exploracion/logo-1.png)): cara de mono lavanda (`#9C8CD9` / `#D4CCF6`) dentro de un cuadrado redondeado grafito (`#2B2A2F`) + wordmark `moni` en minúsculas, Space Grotesk 700, grafito. El isotipo solo es el icono de app (Android adaptive icon, favicon).
+- **Mascota principal: M3** ([mascota-3.png](brand/exploracion/mascota-3.png)): mono asomado sobre una moneda dorada con `$`. Al vectorizar, quitar el contorno negro para que encaje con el estilo plano de L1.
+- **Variantes** para otras partes de la app (ubicación por decidir): M2 abraza una moneda ([mascota-2.png](brand/exploracion/mascota-2.png)), M4 meditando con monedas ([mascota-4.png](brand/exploracion/mascota-4.png)), M6 barriga de moneda ([mascota-6.png](brand/exploracion/mascota-6.png)).
+
+### Archivos fuente (SVG)
+
+Vectorizados con Hydrogen a partir de L1 y M3. Solo `<path>` con relleno, para poder convertirlos 1:1 a VectorDrawable. **Fuente de verdad: `docs/brand/`**. Si cambian, se copian o convierten de nuevo a cada plataforma.
+
+| Archivo | Contenido | Web | Android |
+|---|---|---|---|
+| `moni-isotipo.svg` | Cara sobre cuadro grafito (108×108, radio 24) | `src/app/icon.svg` (favicon), `public/brand/` | `drawable/moni_isotipo.xml` |
+| `moni-face.svg` | Solo la cara, dentro de la zona segura de 66 | — | `drawable/ic_launcher_foreground.xml` (icono adaptativo, fondo `#2B2A2F`) |
+| `moni-cara.svg` | Solo la cara sin fondo, recortada al contorno (67×49) | `public/brand/` | `drawable/moni_cara.xml` |
+| `moni-mascota.svg` | Mascota M3 sin contorno (200×220) | `public/brand/` | `drawable/moni_mascota.xml` |
+
+### Uso en la app
+
+- **Lockup** (isotipo 20–22px + `moni` 700, -0.02em): reemplaza la etiqueta `MONI` en todas las cabeceras y en el login. Web `MoniLockup` (`src/app/brand.tsx`), Android `MoniLockup` (`ui/Brand.kt`).
+- **Mascota M3**: arriba del login (en la web se asoma sobre el borde de la tarjeta) y en el estado vacío de movimientos sin filtro. Con filtro activo se mantiene el icono de Lucide. Entra con un "asomo" de muelle (sube 24px y escala .85→1, ~560ms, 120ms de retraso). No hay animaciones en bucle.
+- Las variantes M2, M4 y M6 todavía no tienen SVG ni ubicación asignada.
 
 ## Historial de rondas de paleta
 

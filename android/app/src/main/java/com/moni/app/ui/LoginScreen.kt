@@ -96,7 +96,9 @@ fun LoginScreen(
     ) {
         Entrance(Modifier.fillMaxWidth()) {
             Column {
-                Text("MONI", color = MoniColors.mut, style = MaterialTheme.typography.labelSmall)
+                MoniMascot(96.dp)
+                Spacer(Modifier.height(12.dp))
+                MoniLockup()
                 Spacer(Modifier.height(4.dp))
                 Text(
                     if (signUp) "Crea tu cuenta" else "Bienvenido de nuevo",

@@ -9,6 +9,7 @@ import AddSheet from "./add-sheet";
 import CategoryIcon from "./category-icon";
 import Review from "./review";
 import CountUp from "./count-up";
+import { MoniLockup, MoniMascot } from "./brand";
 
 type Filter = "all" | "income" | "expense";
 
@@ -54,8 +55,8 @@ export default function Dashboard({
     <main className="mx-auto flex w-full max-w-[720px] flex-col gap-4 px-4 py-6 sm:px-8 sm:py-10">
       <header className="anim-rise flex items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-mut">Moni</p>
-          <h1 className="text-[22px] font-bold leading-tight">Tus finanzas</h1>
+          <MoniLockup />
+          <h1 className="mt-1 text-[22px] font-bold leading-tight">Tus finanzas</h1>
         </div>
         <form action={signOut} className="flex items-center gap-1">
           <span className="hidden max-w-[220px] truncate text-sm text-mut sm:inline">{email}</span>
@@ -123,9 +124,13 @@ export default function Dashboard({
         )}
         {!loadError && visible.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-            <span className="flex size-14 items-center justify-center rounded-[16px] bg-acc-tile text-acc-ink">
-              <ReceiptText size={26} aria-hidden />
-            </span>
+            {filter === "all" ? (
+              <MoniMascot size={112} />
+            ) : (
+              <span className="flex size-14 items-center justify-center rounded-[16px] bg-acc-tile text-acc-ink">
+                <ReceiptText size={26} aria-hidden />
+              </span>
+            )}
             <p className="max-w-xs text-sm text-mut">{EMPTY_COPY[filter]}</p>
           </div>
         )}

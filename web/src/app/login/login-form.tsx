@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { CircleAlert, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import { signIn, signUp, type AuthState } from "./actions";
+import { MoniLockup, MoniMascot } from "../brand";
 
 type Mode = "signin" | "signup";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -27,15 +28,18 @@ export default function LoginForm() {
   const [pending, setPending] = useState(false);
 
   return (
-    <div className="anim-rise w-full max-w-[400px] rounded-card bg-card p-6 shadow-card sm:p-8">
+    <div className="flex w-full max-w-[400px] flex-col items-center">
+    <MoniMascot size={104} className="relative z-10 -mb-3" />
+    <div className="anim-rise w-full rounded-card bg-card p-6 shadow-card sm:p-8">
       <div className="mb-6">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-mut">Moni</p>
+        <MoniLockup />
         <h1 className="mt-1 text-[22px] font-bold">{COPY[mode].title}</h1>
       </div>
 
       <Segmented mode={mode} onChange={setMode} disabled={pending} />
 
       <AuthFields key={mode} mode={mode} onPending={setPending} />
+    </div>
     </div>
   );
 }

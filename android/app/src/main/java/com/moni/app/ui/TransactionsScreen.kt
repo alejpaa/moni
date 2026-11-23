@@ -181,10 +181,14 @@ private fun EmptyState(loaded: Boolean, filtered: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!loaded) return@Column
-        Box(
-            Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MoniColors.iconTile),
-            contentAlignment = Alignment.Center,
-        ) { LucideIcon(LucideR.drawable.lucide_ic_wallet, null, tint = MoniColors.iconStroke, size = 24) }
+        if (filtered) {
+            Box(
+                Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MoniColors.iconTile),
+                contentAlignment = Alignment.Center,
+            ) { LucideIcon(LucideR.drawable.lucide_ic_wallet, null, tint = MoniColors.iconStroke, size = 24) }
+        } else {
+            MoniMascot(112.dp)
+        }
         Spacer(Modifier.height(12.dp))
         Text(
             if (filtered) "Sin movimientos aquí" else "Aún no hay movimientos",
