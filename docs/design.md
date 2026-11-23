@@ -11,7 +11,7 @@ Rebranding (iniciado 2026-11-22): aspecto **moderno y minimalista**, con **anima
 | Decisión | Estado |
 |---|---|
 | Paleta de colores | ✅ **J4 Lavanda & Grafito — modo claro** (2026-11-22). Modo oscuro: pendiente de afinar |
-| Tipografía | Pendiente |
+| Tipografía | ✅ **Space Grotesk** (2026-11-22) |
 | Forma (radios, sombras, densidad) | Pendiente |
 | Animaciones | Pendiente |
 | Componentes clave (balance, lista, añadir) | Pendiente |
@@ -37,6 +37,24 @@ Grafito cálido neutro con lavanda como único color de marca. Minimalista. Impl
 Modo oscuro (borrador, sin aprobar): bg `#161518`, fg `#EDECF0`, mut `#9E9CA6`, card `#1F1E23`, line `#2E2C33`, hero `#26232F` / `#C8BEF5`, acc `#B4A7F5` / `#161518`, inc `#7DD8C0`, exp `#F28BAA`.
 
 Mientras no se apruebe el oscuro, las apps usan siempre el modo claro.
+
+## Tipografía elegida: Space Grotesk
+
+Única familia para todo (títulos, cuerpo y números). Pesos: 400 cuerpo, 500 etiquetas, 600 énfasis y montos, 700 títulos y balance. Números con `font-variant-numeric: tabular-nums` (Compose: `fontFeatureSettings = "tnum"`). Títulos con tracking negativo (-0.02em); balance -0.03em.
+
+- Web: `next/font/google` → `Space_Grotesk`.
+- Android: TTF en `res/font` (o Downloadable Fonts) → `FontFamily` en el tema de Compose.
+
+### Opciones consideradas
+
+Todas en Google Fonts (web vía `next/font/google`, Android vía Downloadable Fonts o TTF en `res/font`).
+
+| Opción | Familia | Carácter |
+|---|---|---|
+| T1 | Manrope | Geométrica y amable, números muy legibles. Moderna y discreta. |
+| T2 | Bricolage Grotesque | Grotesca con carácter, formas ligeramente irregulares. Personalidad propia. |
+| T3 | Instrument Serif (títulos y balance) + Instrument Sans (resto) | Editorial, de autor. |
+| T4 | Space Grotesk | Técnica y geométrica, guiños retro. Producto digital. |
 
 ## Historial de rondas de paleta
 
