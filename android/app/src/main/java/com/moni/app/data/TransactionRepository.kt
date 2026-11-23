@@ -55,8 +55,15 @@ class TransactionRepository {
             order("created_at", Order.ASCENDING)
         }.decodeList()
 
-    suspend fun add(type: String, amount: Double, categoryId: String, accountId: String?, note: String?) {
-        table.insert(NewTransaction(type, amount, categoryId, accountId, note))
+    suspend fun add(
+        type: String,
+        amount: Double,
+        categoryId: String,
+        accountId: String?,
+        note: String?,
+        reminderId: String? = null,
+    ) {
+        table.insert(NewTransaction(type, round2(amount), categoryId, accountId, note, reminderId = reminderId))
     }
 
     /** Confirms or ignores a pending row, optionally reassigning category/account. */

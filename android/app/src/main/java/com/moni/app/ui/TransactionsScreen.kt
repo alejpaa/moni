@@ -265,13 +265,27 @@ private fun TransactionRow(
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                Text(
-                    category?.name ?: t.merchant?.takeIf { it.isNotBlank() } ?: "Sin categoría",
-                    color = MoniColors.fg,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        category?.name ?: t.merchant?.takeIf { it.isNotBlank() } ?: "Sin categoría",
+                        color = MoniColors.fg,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (t.reminderId != null) {
+                        LucideIcon(
+                            LucideR.drawable.lucide_ic_repeat,
+                            contentDescription = "Recurrente",
+                            tint = MoniColors.iconStroke,
+                            size = 13,
+                        )
+                    }
+                }
                 Text(
                     formatDate(t.occurredAt) + (listOfNotNull(t.merchant.takeIf { category != null }, t.note).firstOrNull { !it.isNullOrBlank() }?.let { " · $it" } ?: ""),
                     color = MoniColors.mut,

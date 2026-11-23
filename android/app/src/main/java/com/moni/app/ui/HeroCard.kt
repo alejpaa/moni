@@ -35,7 +35,7 @@ import kotlinx.coroutines.delay
 
 /** Balance card: counts up over ~900ms on first load, 500ms on later changes. */
 @Composable
-internal fun HeroCard(balance: Double, income: Double, expense: Double, loaded: Boolean) {
+internal fun HeroCard(balance: Double, income: Double, expense: Double, loaded: Boolean, month: String) {
     var settled by remember { mutableStateOf(false) }
     LaunchedEffect(loaded) { if (loaded) { delay(1000); settled = true } }
     val shown by animateFloatAsState(
@@ -55,7 +55,7 @@ internal fun HeroCard(balance: Double, income: Double, expense: Double, loaded: 
             .background(MoniColors.hero)
             .padding(20.dp),
     ) {
-        Text("Balance", color = MoniColors.heroFg.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+        Text("Balance · $month", color = MoniColors.heroFg.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(4.dp))
         Text(
             money.format(shown.toDouble()),

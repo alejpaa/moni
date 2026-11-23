@@ -46,6 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.data.Account
 import com.moni.app.data.Category
+import com.moni.app.data.Reminder
 import com.moni.app.data.Transaction
 import com.moni.app.data.TxLite
 import com.moni.app.ui.theme.MoniColors
@@ -123,6 +124,7 @@ fun DashboardScreen(
     val slices = remember(month, state.categories) { categorySlices(month, state.categories) }
     val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
     val latest = remember(state.transactions) { state.transactions.take(5) }
+    val upcoming = remember(state.reminders) { state.reminders.filter { it.frequency != null && !it.isDone }.take(5) }
     // Same figure as "Disponible" in Cuentas: money in non-card accounts.
     val totalBalance = state.accounts.filter { it.type != "credit_card" }.sumOf { balances[it.id] ?: it.openingBalance }
 
@@ -136,17 +138,12 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Entrance {
-                Column {
-                    ScreenHeader("Hola")
-                    Text(monthLabel(), color = MoniColors.mut, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+            Entrance { ScreenHeader("moni") }
         }
         item {
             Entrance(delayMs = 70, initialScale = 0.92f) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HeroCard(income - expense, income, expense, state.loaded)
+                    HeroCard(income - expense, income, expense, state.loaded, monthLabel())
                     if (state.accounts.isNotEmpty()) {
                         Text(
                             "Disponible en cuentas: ${money.format(totalBalance)}",
@@ -169,6 +166,15 @@ fun DashboardScreen(
         if (state.accounts.isNotEmpty()) {
             item {
                 Entrance(delayMs = 220) { AccountsSummary(state.accounts, balances) }
+            }
+        }
+        if (upcoming.isNotEmpty()) {
+            item {
+                Entrance(delayMs = 245) {
+                    SoftCard(Modifier.fillMaxWidth()) {
+                        UpcomingRemindersCard(upcoming, categoriesById)
+                    }
+                }
             }
         }
         item {
@@ -325,5 +331,62 @@ private fun RecentRow(t: Transaction, category: Category?) {
             color = if (income) MoniColors.inc else MoniColors.exp,
             style = MaterialTheme.typography.labelLarge.tabular,
         )
+    }
+}
+
+private fun frequencyLabel(frequency: String?): String = when (frequency) {
+    "weekly" -> "Semanal"
+    "monthly" -> "Mensual"
+    "yearly" -> "Anual"
+    else -> ""
+}
+
+@Composable
+private fun UpcomingRemindersCard(reminders: List<Reminder>, categoriesById: Map<String, Category>) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            "Próximos pagos y cobros",
+            color = MoniColors.fg,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        reminders.forEach { r -> UpcomingReminderRow(r, categoriesById[r.categoryId]) }
+    }
+}
+
+@Composable
+private fun UpcomingReminderRow(r: Reminder, category: Category?) {
+    val isIncome = r.kind == "receivable"
+    val freq = frequencyLabel(r.frequency)
+    val date = formatDate(r.dueDate)
+    val subtitle = listOf(freq, date).filter { it.isNotEmpty() }.joinToString(" · ")
+    val amountText = r.amount?.let { (if (isIncome) "+" else "−") + money.format(it) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = listOfNotNull(
+                    r.title,
+                    subtitle.takeIf { it.isNotEmpty() },
+                    r.amount?.let { (if (isIncome) "ingreso " else "gasto ") + money.format(it) },
+                ).joinToString(", ")
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconTile(categoryIcon(category, isIncome))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(r.title, color = MoniColors.fg, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = MoniColors.mut, style = MaterialTheme.typography.labelSmall.tabular)
+        }
+        if (amountText != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                amountText,
+                color = if (isIncome) MoniColors.inc else MoniColors.exp,
+                style = MaterialTheme.typography.labelLarge.tabular,
+            )
+        }
     }
 }

@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.moni.app.data.Account
 import com.moni.app.data.Category
+import com.moni.app.data.NewReminder
+import com.moni.app.data.Reminder
+import com.moni.app.data.ReminderRepository
 import com.moni.app.data.Transaction
 import com.moni.app.data.TransactionRepository
 import com.moni.app.data.supabase
@@ -26,6 +29,7 @@ data class UiState(
     val pending: List<Transaction> = emptyList(),
     val categories: List<Category> = emptyList(),
     val accounts: List<Account> = emptyList(),
+    val reminders: List<Reminder> = emptyList(),
     /** True once the first transactions fetch finished. */
     val loaded: Boolean = false,
     /** A user-initiated request (sign in/up, add) is in flight. */
@@ -34,8 +38,15 @@ data class UiState(
     val notice: String? = null,
 )
 
+data class RecurringInput(
+    val title: String,
+    val frequency: String,
+    val dueDate: String,
+)
+
 class MoniViewModel(
     private val repo: TransactionRepository = TransactionRepository(),
+    private val reminderRepo: ReminderRepository = ReminderRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -75,15 +86,44 @@ class MoniViewModel(
         runCatching { repo.listPending() }.onSuccess { p -> _state.update { it.copy(pending = p) } }
         runCatching { repo.categories() }.onSuccess { c -> _state.update { it.copy(categories = c) } }
         runCatching { repo.accounts() }.onSuccess { a -> _state.update { it.copy(accounts = a) } }
+        runCatching { reminderRepo.listActive() }.onSuccess { r -> _state.update { it.copy(reminders = r) } }
     }
 
     /** [onDone] runs on success so the UI can close the form. */
-    fun add(type: String, amount: Double, categoryId: String, accountId: String?, note: String?, onDone: () -> Unit = {}) =
-        run(busy = true) {
-            repo.add(type, amount, categoryId, accountId, note)
-            _state.update { it.copy(transactions = repo.list(), loaded = true) }
-            onDone()
+    fun add(
+        type: String,
+        amount: Double,
+        categoryId: String,
+        accountId: String?,
+        note: String?,
+        recurring: RecurringInput? = null,
+        onDone: () -> Unit = {},
+    ) = run(busy = true) {
+        val reminderId = recurring?.let { r ->
+            reminderRepo.create(
+                NewReminder(
+                    kind = if (type == "income") "receivable" else "payable",
+                    title = r.title,
+                    amount = amount,
+                    dueDate = r.dueDate,
+                    frequency = r.frequency,
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    note = note,
+                ),
+            ).id
         }
+        repo.add(type, amount, categoryId, accountId, note, reminderId = reminderId)
+        val refreshedReminders = if (recurring != null) runCatching { reminderRepo.listActive() }.getOrNull() else null
+        _state.update { s ->
+            s.copy(
+                transactions = repo.list(),
+                reminders = refreshedReminders ?: s.reminders,
+                loaded = true,
+            )
+        }
+        onDone()
+    }
 
     /** Confirms a pending row (optionally with a new category/account). */
     fun confirm(id: String, categoryId: String?, accountId: String?) = run {

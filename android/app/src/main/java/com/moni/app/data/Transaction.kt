@@ -20,6 +20,7 @@ data class Transaction(
     val status: String = "confirmed",
     @SerialName("occurred_at") val occurredAt: String,
     val note: String? = null,
+    @SerialName("reminder_id") val reminderId: String? = null,
 ) {
     val isIncome get() = type == "income"
 }
@@ -34,6 +35,7 @@ data class NewTransaction(
     val note: String? = null,
     val source: String = "manual",
     val status: String = "confirmed",
+    @SerialName("reminder_id") val reminderId: String? = null,
 )
 
 @Serializable

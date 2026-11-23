@@ -26,6 +26,15 @@ import com.moni.app.ui.theme.MoniColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** Monkey face without background or clip (docs/brand/moni-cara.svg). */
+@Composable
+internal fun MoniFace(size: Dp = 36.dp, modifier: Modifier = Modifier) {
+    Image(
+        painterResource(R.drawable.moni_cara), contentDescription = "moni",
+        modifier = modifier.size(size),
+    )
+}
+
 /** Isotipo: monkey face on a graphite rounded square (docs/brand/moni-isotipo.svg). */
 @Composable
 internal fun MoniMark(size: Dp = 20.dp, modifier: Modifier = Modifier) {
