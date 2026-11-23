@@ -14,5 +14,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# next
+.next/
+next-env.d.ts
+
 # OS files
 .DS_Store

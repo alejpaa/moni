@@ -1,26 +1,29 @@
 # moni
 
-Monorepo base for the finance app:
+Monorepo for the finance app:
 
-- `web`: Next.js app (main app for Vercel)
-- `mobile`: Expo React Native app
+- `web`: Next.js app (deployed on Vercel)
 - `packages/shared`: shared TypeScript models
+- `supabase`: database schema and local config
+- `mobile`: legacy Expo app, to be replaced by a native Kotlin Android app (not part of the Bun workspace)
 
 ## Requirements
 
-- Node.js 22+
-- pnpm 10+
+- Bun 1.4+
+- Docker (only for running Supabase locally)
 
 ## Run locally
 
 ```bash
-pnpm install
-pnpm dev:web
-pnpm dev:mobile
+bun install
+bun dev            # runs the web app at http://localhost:3000
+bun run typecheck
+bun run lint
+bun run build
 ```
 
-You can also run both apps in parallel:
+Local database:
 
 ```bash
-pnpm dev
+supabase start     # applies migrations, Studio at http://localhost:54323
 ```
