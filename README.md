@@ -29,7 +29,7 @@ Android:
 cp android/local.properties.example android/local.properties   # set supabase.anonKey
 cd android && ./gradlew :app:assembleDebug
 ```
-The emulator reaches the host Supabase at `http://10.0.2.2:54321`.
+Run `adb reverse tcp:54321 tcp:54321` so the phone or emulator reaches the host Supabase at `http://127.0.0.1:54321`. Re-run it after reconnecting the device.
 
 ## Commands
 

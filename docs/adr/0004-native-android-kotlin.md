@@ -10,7 +10,7 @@ Accepted
 The first mobile client was an Expo/React Native app in `mobile/`. We decided to build a fully native Android client instead.
 
 ## Decision
-Replace `mobile/` (deleted 2026-11-22) with `android/`: Kotlin, Jetpack Compose, supabase-kt. It is a Gradle project outside the Bun workspace. Config comes from `android/local.properties` (`supabase.url`, `supabase.anonKey`; emulator uses `http://10.0.2.2:54321`). Distribution: debug APK via `./gradlew assembleDebug`, later GitHub Actions / Play internal track.
+Replace `mobile/` (deleted 2026-11-22) with `android/`: Kotlin, Jetpack Compose, supabase-kt. It is a Gradle project outside the Bun workspace. Config comes from `android/local.properties` (`supabase.url`, `supabase.anonKey`; local dev uses `supabase.url=http://127.0.0.1:54321` plus `adb reverse tcp:54321 tcp:54321` (works on a USB phone and on the emulator)). Distribution: debug APK via `./gradlew assembleDebug`, later GitHub Actions / Play internal track.
 
 ## Alternatives Considered
 - Keep Expo/React Native: shares TS with web and covers iOS, but we preferred native performance and platform tooling.

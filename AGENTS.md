@@ -31,7 +31,7 @@ supabase db reset           # re-apply all migrations locally
 cd android && ./gradlew :app:assembleDebug   # debug APK
 ```
 
-Android emulator: use an AVD from Android Studio; it reaches the host at `http://10.0.2.2:54321`.
+Android device (USB phone or emulator): run `adb reverse tcp:54321 tcp:54321` (again after every reconnect), then `adb install -r app/build/outputs/apk/debug/app-debug.apk`. The app calls `http://127.0.0.1:54321`. JDK: `JAVA_HOME=/opt/homebrew/opt/openjdk@17`.
 
 Config (never commit real values):
 - Web: `web/.env.local` (template `web/.env.example`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.

@@ -7,7 +7,7 @@ plugins {
 }
 
 // Supabase config comes from android/local.properties (git-ignored).
-// Defaults target a local `supabase start` reached from the emulator.
+// Defaults target a local `supabase start` via `adb reverse tcp:54321 tcp:54321`.
 val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
@@ -24,7 +24,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "SUPABASE_URL", "\"${prop("supabase.url", "http://10.0.2.2:54321")}\"")
+        buildConfigField("String", "SUPABASE_URL", "\"${prop("supabase.url", "http://127.0.0.1:54321")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${prop("supabase.anonKey", "")}\"")
     }
 

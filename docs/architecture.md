@@ -37,5 +37,5 @@ Android:
 
 ## Environments
 
-- Local: `supabase start` (API 54321, Studio 54323); Android emulator uses `10.0.2.2`.
+- Local: `supabase start` (API 54321, Studio 54323); Android uses `supabase.url=http://127.0.0.1:54321` plus `adb reverse tcp:54321 tcp:54321` (works on a USB phone and on the emulator).
 - Production: web on Vercel (root dir `web`), DB on Supabase Cloud (`supabase link`, `supabase db push`), Android APK built with Gradle.
