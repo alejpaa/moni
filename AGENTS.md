@@ -4,7 +4,7 @@ Guide for AI agents and humans working in this repo.
 
 ## Overview
 
-moni is a personal finance app (transactions, saving goals). A Next.js web app and a native Android app share one Supabase backend (Postgres + Auth + RLS). Architecture: [docs/architecture.md](docs/architecture.md). Decisions: [docs/adr/](docs/adr/README.md). Visual design: [docs/design.md](docs/design.md) (read before touching UI).
+moni is a personal finance app (transactions, saving goals). A Next.js web app and a native Android app share one Supabase backend (Postgres + Auth + RLS). Architecture: [docs/architecture.md](docs/architecture.md). Decisions: [docs/adr/](docs/adr/README.md). Visual design: [docs/design.md](docs/design.md) (read before touching UI). Roadmap for automatic capture: [docs/plan-automatizacion.md](docs/plan-automatizacion.md).
 
 ## Repo map
 
