@@ -53,7 +53,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.ui.theme.MoniColors
 
@@ -66,9 +65,11 @@ private enum class Tab(val label: String, val icon: Int) {
 
 private val BarHeight = 64.dp
 private val BarGap = 16.dp
+private val FabSize = 56.dp
+private val FabGap = 12.dp
 
 /**
- * Signed-in shell: the active tab plus a floating bottom bar (pill + round "+").
+ * Signed-in shell: the active tab plus a floating bottom bar (full-width pill with a "+" FAB stacked above it).
  * Owns the add and review sheets so any tab can open them.
  */
 @Composable
@@ -80,9 +81,9 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
     LaunchedEffect(state.pending.isEmpty()) { if (state.pending.isEmpty()) showReview = false }
     BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
-    // Tabs lay out above the floating bar: bar + gaps + system navigation inset.
+    // Tabs lay out above the floating bar and FAB: bar + FAB + gaps + system navigation inset.
     val contentPadding = PaddingValues(
-        bottom = BarHeight + BarGap * 2 + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+        bottom = BarHeight + BarGap * 2 + FabGap + FabSize + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
     )
     val openReview = { vm.clearError(); showReview = true }
 
@@ -104,16 +105,16 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
             }
         }
 
-        Row(
+        Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(start = 16.dp, end = 16.dp, bottom = BarGap),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(FabGap),
+            horizontalAlignment = Alignment.End,
         ) {
-            FloatingTabBar(tab, { tab = it }, Modifier.weight(1f))
             AddButton { vm.clearError(); showAdd = true }
+            FloatingTabBar(tab, { tab = it }, Modifier.fillMaxWidth())
         }
     }
 
@@ -170,7 +171,7 @@ private fun FloatingTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Mod
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     LucideIcon(t.icon, null, tint = color, size = 20)
-                    Text(t.label, color = color, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.sp), maxLines = 1, softWrap = false)
+                    Text(t.label, color = color, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -182,7 +183,7 @@ private fun AddButton(onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .size(56.dp)
+            .size(FabSize)
             .pressScale(source)
             .shadow(14.dp, CircleShape, ambientColor = MoniColors.acc.copy(alpha = 0.8f), spotColor = MoniColors.acc.copy(alpha = 0.8f))
             .clip(CircleShape)
