@@ -1,56 +1,152 @@
 @import "tailwindcss";
 
+/* Moni design tokens: J4 Lavanda & Grafito (light only). See docs/design.md */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --surface: #ffffff;
-  --border: #e2e8f0;
-  --muted: #64748b;
-  --accent: #047857;
-  --income: #047857;
-  --expense: #b91c1c;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b1120;
-    --foreground: #e2e8f0;
-    --surface: #111827;
-    --border: #1f2937;
-    --muted: #94a3b8;
-    --accent: #34d399;
-    --income: #34d399;
-    --expense: #f87171;
-  }
+  color-scheme: light;
+  --bg: #f7f6f8;
+  --fg: #1f1e22;
+  --mut: #74727a;
+  --card: #ffffff;
+  --line: #e7e5ea;
+  --hero: #2b2a2f;
+  --hero-fg: #d4ccf6;
+  --acc: #9c8cd9;
+  --acc-fg: #ffffff;
+  --acc-ink: #6f5fc0;
+  --acc-tile: #efebfb;
+  --acc-tint: #f4f1fd;
+  --divider: #f0eef2;
+  --inc: #2f8f7a;
+  --exp: #c2416b;
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-income: var(--income);
-  --color-expense: var(--expense);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-mut: var(--mut);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-hero: var(--hero);
+  --color-hero-fg: var(--hero-fg);
+  --color-acc: var(--acc);
+  --color-acc-fg: var(--acc-fg);
+  --color-acc-ink: var(--acc-ink);
+  --color-acc-tile: var(--acc-tile);
+  --color-inc: var(--inc);
+  --color-exp: var(--exp);
+  --font-sans: var(--font-space-grotesk), system-ui, sans-serif;
+  --radius-hero: 22px;
+  --radius-card: 20px;
+  --radius-btn: 18px;
+  --radius-input: 14px;
+  --shadow-hero: 0 10px 24px -10px rgba(43, 42, 47, 0.45);
+  --shadow-card: 0 6px 20px -8px rgba(31, 30, 34, 0.12);
+  --shadow-btn: 0 8px 18px -8px rgba(156, 140, 217, 0.8);
+  --shadow-chip: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2 {
+  letter-spacing: -0.02em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* Button press: scale .94 in 90ms, spring back in 260ms */
+@utility press {
+  transition: transform 260ms var(--spring), box-shadow 200ms, background-color 150ms, opacity 150ms;
+  &:active:not(:disabled) {
+    transform: scale(0.94);
+    transition-duration: 90ms;
+    transition-timing-function: ease-out;
+  }
 }
 
 @layer components {
-  .input {
-    @apply rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent;
-  }
   .btn-primary {
-    @apply rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 dark:text-slate-950;
+    @apply press inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-btn bg-acc px-5 text-base font-semibold text-acc-fg shadow-btn disabled:cursor-not-allowed disabled:opacity-70;
   }
-  .btn-secondary {
-    @apply rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-background;
+  .field {
+    @apply flex min-h-12 w-full items-center gap-2 rounded-input bg-card px-3.5 text-fg ring-1 ring-line transition-shadow focus-within:ring-2 focus-within:ring-acc;
   }
+  .field[data-invalid="true"] {
+    @apply ring-exp;
+  }
+  .field input,
+  .field select {
+    @apply min-h-11 w-full bg-transparent text-base outline-none placeholder:text-mut/70;
+  }
+  .icon-btn {
+    @apply press inline-flex size-11 shrink-0 items-center justify-center rounded-full text-mut hover:bg-acc-tile hover:text-acc-ink;
+  }
+}
+
+/* ---- M2 Fluido keyframes ---- */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hero-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes new-item {
+  from { opacity: 0; transform: translateX(-30px) scale(0.9); background-color: var(--acc-tint); }
+  60% { background-color: var(--acc-tint); }
+  to { opacity: 1; transform: none; background-color: transparent; }
+}
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.anim-rise { animation: rise-in 520ms var(--spring) both; animation-delay: var(--delay, 0ms); }
+.anim-hero { animation: hero-in 520ms var(--spring) both; }
+.anim-new { animation: new-item 700ms var(--spring) both; }
+.anim-error { animation: fade-rise 250ms ease-out both; }
+.anim-spin { animation: spin 800ms linear infinite; }
+
+dialog.sheet[open] { animation: sheet-in 400ms var(--spring) both; }
+dialog.sheet[open]::backdrop { animation: backdrop-in 250ms ease-out both; }
+dialog.sheet::backdrop { background: rgba(31, 30, 34, 0.45); }
+
+/* Delete: fade + collapse (250ms) */
+.row-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 250ms ease, opacity 250ms ease;
+}
+.row-wrap[data-removing="true"] { grid-template-rows: 0fr; opacity: 0; }
+.row-wrap > div { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .anim-spin { animation-duration: 1.5s !important; animation-iteration-count: infinite !important; }
 }

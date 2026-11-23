@@ -43,7 +43,7 @@ Mientras no se apruebe el oscuro, las apps usan siempre el modo claro.
 Única familia para todo (títulos, cuerpo y números). Pesos: 400 cuerpo, 500 etiquetas, 600 énfasis y montos, 700 títulos y balance. Números con `font-variant-numeric: tabular-nums` (Compose: `fontFeatureSettings = "tnum"`). Títulos con tracking negativo (-0.02em); balance -0.03em.
 
 - Web: `next/font/google` → `Space_Grotesk`.
-- Android: TTF en `res/font` (o Downloadable Fonts) → `FontFamily` en el tema de Compose.
+- Android: TTF **estáticos** por peso en `res/font` (`space_grotesk_{regular,medium,semibold,bold}.ttf`, generados del variable con `fonttools varLib.instancer`). No usar el TTF variable: Android ignora `wght` en fuentes de recursos y todo sale en 400.
 
 ### Opciones consideradas
 

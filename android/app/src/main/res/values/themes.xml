@@ -1,3 +1,5 @@
 <resources>
-    <style name="Theme.Moni" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Moni" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F7F6F8</item>
+    </style>
 </resources>
