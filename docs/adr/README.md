@@ -10,3 +10,4 @@ Format: `# ADR-NNNN: Title` with Status, Date, Context, Decision, Alternatives C
 | [0004](0004-native-android-kotlin.md) | Native Android (Kotlin/Compose) replaces React Native/Expo | Accepted |
 | [0005](0005-web-auth-ssr-proxy-actions.md) | Web auth with @supabase/ssr, Next 16 proxy and server actions | Accepted |
 | [0006](0006-automatic-transaction-capture.md) | Automatic transaction capture: notifications first, then forwarded emails | Proposed |
+| [0007](0007-merged-data-model.md) | Merged data model: cloud workspaces + planning and capture (supersedes the RLS rule in 0002) | Accepted |

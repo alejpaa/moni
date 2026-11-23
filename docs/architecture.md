@@ -16,19 +16,21 @@ Web and Android are independent clients of the same Supabase project. There is n
 
 Defined in `supabase/migrations/` (source of truth).
 
-- `transactions`: `id`, `user_id` (-> `auth.users`, cascade), `type` (`income`|`expense`), `amount` numeric(12,2) > 0, `category` (non-blank), `occurred_at`, `note`, `created_at`, `updated_at`. Index on `(user_id, occurred_at desc)`.
-- `saving_goals`: `id`, `user_id`, `name`, `target_amount` > 0, `current_amount` >= 0, `period` (`monthly`|`yearly`), `deadline`, timestamps.
-- `set_updated_at()` trigger keeps `updated_at` current (search_path pinned).
-- RLS enabled on both tables; select/insert/update/delete policies require `(select auth.uid()) = user_id`.
+Full reference: [database.md](database.md) (ER diagram, RLS, money and installment rules, capture pipeline). Decision: [ADR-0007](adr/0007-merged-data-model.md).
 
-Mirrors: `packages/shared/src/index.ts` (TS) and `android/app/src/main/java/com/moni/app/data/` (Kotlin).
+- Financial data belongs to a **workspace** (`workspaces`, `workspace_members` with roles). Each user gets a personal workspace with default categories and a cash account on signup.
+- Core tables: `accounts` (incl. credit cards), `categories` / `subcategories`, `transactions`, `transfers`, `installment_plans`, `budgets`, `reminders` (one-off and recurring), `merchant_rules`, `saving_goals`, `ingest_addresses` / `inbound_emails`.
+- Views: `account_balances`, `installment_plan_status`, `budget_progress`.
+- RLS on every table, by workspace membership.
+
+Mirrors: `packages/shared/src/database.types.ts` (generated TS), `packages/shared/src/index.ts` (helpers) and `android/app/src/main/java/com/moni/app/data/` (Kotlin).
 
 ## Request flow
 
 Web:
 1. Browser requests a page; `web/src/proxy.ts` refreshes the session cookie and redirects to `/login` if signed out.
 2. Server components create a client (`web/src/lib/supabase/server.ts`), call `getUser()` and query PostgREST with the user's JWT.
-3. Postgres applies RLS, so only the user's rows are returned. Mutations go through server actions.
+3. Postgres applies RLS, so only rows of the user's workspaces are returned. Mutations go through server actions.
 
 Android:
 1. `LoginScreen` signs in via supabase-kt; the session is held by the client.

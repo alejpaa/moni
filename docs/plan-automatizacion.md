@@ -20,18 +20,21 @@ Con el teléfono por adb y con permiso del usuario, capturar notificaciones real
 
 ## Fase 1: Modelo de datos (base para todo)
 
-Migración nueva en Supabase:
+**Hecho en la base de datos** (migración `20261123120000_merge_planning_and_capture`, ver [database.md](database.md) y [ADR-0007](adr/0007-merged-data-model.md)). Los datos son del **espacio** (`workspace_id`), no del usuario.
 
 | Tabla / campo | Para qué |
 |---|---|
-| `accounts` (`name`, `kind`: yape · debit · savings · cash · credit_card, `institution`, `last4`, `currency`) | Cada movimiento pertenece a una cuenta |
-| `credit_card_details` (`account_id`, `credit_limit`, `closing_day`, `due_day`) | Deuda, fecha de cierre y de pago |
-| `transactions` + `account_id`, `merchant`, `source` (manual · notification · email · statement · ai), `status` (confirmed · pending · ignored), `external_ref`, `raw_text`, `captured_at` | Origen, bandeja de revisión y trazabilidad |
-| `transfers` (`from_account`, `to_account`, `amount`, `occurred_at`) | Pago de tarjeta, BCP → Yape, etc. No es gasto ni ingreso |
-| `merchant_rules` (`pattern`, `category`, `account_id`) | Categoría automática aprendida por comercio |
-| Índice único (`user_id`, `source`, `external_ref`) + regla de similitud (misma cuenta, mismo monto, ±10 min) | Deduplicación |
+| `accounts` (`name`, `type`: yape · cash · savings · debit · credit_card · wallet · investment · other, `institution`, `last4`, `currency`) | Cada movimiento pertenece a una cuenta |
+| `accounts.credit_limit`, `closing_day`, `due_day` (solo tarjetas) + vista `account_balances` (`card_debt`, `available_credit`) | Deuda, fecha de cierre y de pago |
+| `transactions` + `account_id`, `category_id`, `merchant`, `source` (manual · email · notification · statement · installment · ai), `status` (confirmed · pending · ignored), `external_ref`, `raw_input`, `ai_confidence` | Origen, bandeja de revisión y trazabilidad |
+| `transfers` (`from_account_id`, `to_account_id`, `amount`, `occurred_at`) | Pago de tarjeta, BCP → Yape, etc. No es gasto ni ingreso |
+| `merchant_rules` (`pattern`, `category_id`, `account_id`, `priority`) | Categoría automática por comercio (se aplica al insertar) |
+| `installment_plans` + vista `installment_plan_status` | Compras en cuotas: solo la cuota del mes cuenta como gasto |
+| `reminders` (`frequency`, `remind_days_before`) | Suscripciones y pagos fijos |
+| `ingest_addresses` (`token`) e `inbound_emails` | Dirección secreta de reenvío y registro de correos (Fase 3) |
+| Índice único (`workspace_id`, `source`, `external_ref`) + regla de similitud (misma cuenta, mismo monto, ±10 min, en la app) | Deduplicación |
 
-Todo con RLS. Tipos en `packages/shared` y modelos Kotlin al día.
+Todo con RLS. Tipos generados en `packages/shared/src/database.types.ts`; falta poner al día los modelos Kotlin y la UI.
 
 UI (web y Android):
 - Pantalla de **Cuentas** con saldo por cuenta y total.
