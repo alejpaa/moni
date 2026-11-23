@@ -114,8 +114,51 @@ Derivados de las maquetas aprobadas (paleta J4 claro + Space Grotesk + S1 + M2):
 - **Cabecera**: etiqueta `MONI` (10px, 600, tracking .12em, `mut`) + título "Tus finanzas" (22px, 700).
 - **Tarjeta de balance (hero)**: fondo `hero`, texto `heroFg`; "Balance" pequeño al 70%; monto 30–32px 700 tabular; fila ↑ ingresos / ↓ gastos.
 - **Filtros**: chips pill Todo / Ingresos / Gastos; activo en `acc` con texto blanco.
-- **Lista de movimientos**: tarjeta blanca radio 20px; filas con icono de categoría (cuadro 10px, fondo `#EFEBFB`), nombre 600, fecha `mut`, monto alineado a la derecha en `inc` / `exp` con signo + / −.
+- **Lista de movimientos**: tarjeta blanca radio 20px; filas con icono de categoría (ver Iconos; cuadro 36px radio 10px, fondo `#EFEBFB`, trazo `#6F5FC0`), nombre 600, fecha `mut`, monto alineado a la derecha en `inc` / `exp` con signo + / −.
 - **Añadir**: botón primario ancho completo "Añadir movimiento" (radio 18px, sombra lavanda) que abre una hoja/formulario.
+
+## Iconos
+
+**Nunca emojis.** Un solo set de iconos de línea en ambas plataformas: **Lucide** (trazo 2px, esquinas redondeadas, encaja con Space Grotesk y S1).
+
+- Web: `lucide-react`.
+- Android: Lucide para Compose (`com.composables:icons-lucide`) o, si no está disponible, Material Symbols *Rounded* con el mismo mapeo.
+- Tamaños: 18px en filas y botones, 20px en navegación. Color del trazo en icono de categoría: `#6F5FC0` sobre fondo `#EFEBFB`.
+
+Mapeo de categoría → icono (la categoría es texto libre: se normaliza a minúsculas sin acentos y se busca por palabra clave; si no hay coincidencia se usa el icono por defecto según el tipo):
+
+| Palabras clave | Icono Lucide |
+|---|---|
+| sueldo, salario, nomina, pago | `briefcase` |
+| comida, almuerzo, cena, restaurante | `utensils` |
+| super, supermercado, mercado, compras | `shopping-cart` |
+| cafe | `coffee` |
+| transporte, taxi, bus, uber, gasolina | `bus` (gasolina: `fuel`) |
+| casa, alquiler, renta, hogar | `house` |
+| luz, agua, internet, servicios | `zap` |
+| salud, farmacia, medico | `heart-pulse` |
+| ocio, cine, juegos | `clapperboard` |
+| regalo | `gift` |
+| viaje, vuelo | `plane` |
+| educacion, curso, libros | `graduation-cap` |
+| ahorro, inversion | `piggy-bank` |
+| (por defecto ingreso) | `arrow-down-left` |
+| (por defecto gasto) | `arrow-up-right` |
+
+Otros iconos de UI: añadir `plus`, eliminar `trash-2`, salir `log-out`, mostrar/ocultar contraseña `eye` / `eye-off`, email `mail`, contraseña `lock`, error `circle-alert`.
+
+## Login (especificación UX)
+
+Pantalla centrada (web: tarjeta S1 de máx. 400px; Android: pantalla completa con márgenes 24dp), con la marca arriba (`MONI` + título).
+
+- **Dos modos** con control segmentado: *Entrar* / *Crear cuenta*. Título, texto del botón y `autocomplete` cambian según el modo (`current-password` vs `new-password`). Un solo botón primario por modo.
+- **Campos** con etiqueta visible (no solo placeholder), icono a la izquierda (`mail`, `lock`), radio 14px, anillo de foco lavanda 2px. Teclado de email y sin autocorrección/mayúsculas en el email.
+- **Mostrar contraseña**: botón con icono `eye` / `eye-off` dentro del campo, con etiqueta accesible ("Mostrar contraseña" / "Ocultar contraseña"), no roba el foco del formulario.
+- **Validación** al salir del campo y al enviar: email con formato válido; contraseña mínimo 6 caracteres (en *Crear cuenta* mostrar el requisito como ayuda debajo del campo). Mensajes en español, junto al campo, en color `exp`, con icono `circle-alert`.
+- **Errores del servidor** traducidos a español y amables (p. ej. credenciales inválidas → "Email o contraseña incorrectos"; usuario ya existe → "Ya existe una cuenta con este email"); se muestran en un aviso encima del botón, anunciado a lectores de pantalla (`role="alert"` / `liveRegion`).
+- **Estado de envío**: botón deshabilitado con spinner y texto "Entrando…" / "Creando cuenta…"; evita doble envío. Enter / acción IME "Done" envía.
+- **Accesibilidad**: contraste AA, objetivos táctiles ≥ 44px (48dp en Android), orden de foco lógico, sin depender solo del color.
+- **Animación (M2)**: la tarjeta entra con escala .96→1 y fundido; el cambio de modo anima el indicador del control segmentado con muelle; los errores aparecen con fundido + subida.
 
 ## Historial de rondas de paleta
 
