@@ -16,26 +16,39 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,11 +65,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.ui.theme.MoniColors
-import kotlinx.coroutines.delay
 
 /** Soft spring from docs/design.md (M2 Fluido). */
 fun <T> moniSpring() = spring<T>(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow)
@@ -65,13 +79,20 @@ fun <T> moniSpring() = spring<T>(dampingRatio = 0.7f, stiffness = Spring.Stiffne
 @Composable
 fun Modifier.pressScale(source: InteractionSource): Modifier {
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(
+    val scale = animateFloatAsState(
         targetValue = if (pressed) 0.94f else 1f,
         animationSpec = if (pressed) tween(90) else spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
         label = "pressScale",
     )
-    return graphicsLayer { scaleX = scale; scaleY = scale }
+    return graphicsLayer {
+        val s = scale.value
+        scaleX = s
+        scaleY = s
+    }
 }
+
+/** Controls whether [Entrance] plays its entry animation (false when returning to an already-visited tab). */
+val LocalAnimateEntrance = compositionLocalOf { true }
 
 /** Fade + rise + scale entrance, staggered with [delayMs]. */
 @Composable
@@ -79,8 +100,13 @@ fun Entrance(
     modifier: Modifier = Modifier,
     delayMs: Int = 0,
     initialScale: Float = 0.96f,
+    animate: Boolean = LocalAnimateEntrance.current,
     content: @Composable () -> Unit,
 ) {
+    if (!animate) {
+        Box(modifier) { content() }
+        return
+    }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
     AnimatedVisibility(
@@ -90,6 +116,62 @@ fun Entrance(
             slideInVertically(tween(520, delayMs)) { it / 6 } +
             scaleIn(tween(520, delayMs), initialScale = initialScale),
     ) { content() }
+}
+
+/** Calm static placeholder bar for loading states (no looping shimmer per docs/design.md). */
+@Composable
+internal fun SkeletonBox(
+    modifier: Modifier = Modifier,
+    color: Color = MoniColors.track,
+    radius: Dp = 8.dp,
+) {
+    Box(modifier.clip(RoundedCornerShape(radius)).background(color))
+}
+
+@Composable
+internal fun IconTile(
+    icon: Int,
+    modifier: Modifier = Modifier,
+    size: Dp = 36.dp,
+    radius: Dp = 10.dp,
+    iconSize: Int = 18,
+    tint: Color = MoniColors.iconStroke,
+    containerColor: Color = MoniColors.iconTile,
+) {
+    Box(
+        modifier.size(size).clip(RoundedCornerShape(radius)).background(containerColor),
+        contentAlignment = Alignment.Center,
+    ) { LucideIcon(icon, null, tint = tint, size = iconSize) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun MoniBottomSheet(
+    onDismiss: () -> Unit,
+    busy: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = { if (!busy) onDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MoniColors.card,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        content = content,
+    )
+}
+
+@Composable
+internal fun SheetColumn(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
 }
 
 @Composable
@@ -162,10 +244,10 @@ fun SegmentedControl(
             .selectableGroup(),
     ) {
         val segment = maxWidth / options.size
-        val x by animateDpAsState(segment * selected, moniSpring(), label = "segment")
+        val x = animateDpAsState(segment * selected, moniSpring(), label = "segment")
         Box(
             Modifier
-                .offset { IntOffset(x.roundToPx(), 0) }
+                .offset { IntOffset(x.value.roundToPx(), 0) }
                 .width(segment)
                 .height(48.dp)
                 .shadow(2.dp, RoundedCornerShape(12.dp), ambientColor = Color(0x33000000), spotColor = Color(0x33000000))
@@ -191,7 +273,13 @@ fun SegmentedControl(
 
 /** Error (or info) banner; the wrapper is a live region so screen readers announce changes. */
 @Composable
-fun AlertBanner(message: String?, isError: Boolean = true, modifier: Modifier = Modifier) {
+fun AlertBanner(
+    message: String?,
+    isError: Boolean = true,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     var last by remember { mutableStateOf("") }
     if (message != null) last = message
     Box(modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
@@ -206,14 +294,47 @@ fun AlertBanner(message: String?, isError: Boolean = true, modifier: Modifier = 
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
                     .background(tone.copy(alpha = 0.10f))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 LucideIcon(LucideR.drawable.lucide_ic_circle_alert, null, tint = tone)
                 Spacer(Modifier.width(10.dp))
-                Text(last, color = tone, style = MaterialTheme.typography.bodyMedium)
+                Text(last, color = tone, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                if (actionLabel != null && onAction != null) {
+                    TextButton(onClick = onAction, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text(actionLabel, color = tone, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+internal fun ErrorRetryCard(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .shadow(6.dp, shape, ambientColor = Color(0x1A000000), spotColor = Color(0x1A000000))
+            .clip(shape)
+            .background(MoniColors.card)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IconTile(LucideR.drawable.lucide_ic_circle_alert, size = 48.dp, radius = 14.dp, iconSize = 24, tint = MoniColors.exp, containerColor = MoniColors.exp.copy(alpha = 0.10f))
+        Text(
+            message,
+            color = MoniColors.fg,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+        PrimaryButton("Reintentar", onClick = onRetry)
     }
 }
 

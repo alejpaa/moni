@@ -18,22 +18,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.moni.app.R
 import com.moni.app.ui.theme.MoniColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-/** Monkey face without background or clip (docs/brand/moni-cara.svg). */
-@Composable
-internal fun MoniFace(size: Dp = 36.dp, modifier: Modifier = Modifier) {
-    Image(
-        painterResource(R.drawable.moni_cara), contentDescription = "moni",
-        modifier = modifier.size(size),
-    )
-}
 
 /** Isotipo: monkey face on a graphite rounded square (docs/brand/moni-isotipo.svg). */
 @Composable
@@ -44,22 +38,33 @@ internal fun MoniMark(size: Dp = 20.dp, modifier: Modifier = Modifier) {
     )
 }
 
-/** Isotipo + "moni" wordmark. Replaces the old "MONI" eyebrow. */
+/** Isotipo + "moni" wordmark (docs/design.md: 20-22dp isotipo + moni 700, -0.02em). */
 @Composable
 internal fun MoniLockup(modifier: Modifier = Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         MoniMark(20.dp)
-        Text("moni", color = MoniColors.fg, style = MaterialTheme.typography.titleSmall)
+        Text(
+            "moni",
+            color = MoniColors.fg,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.32).sp,
+            ),
+        )
     }
 }
 
 /** Mascot M3: the monkey peeking over a gold coin. Enters with a springy peek (M2 Fluido). */
 @Composable
 internal fun MoniMascot(width: Dp = 104.dp, modifier: Modifier = Modifier) {
-    val progress = remember { Animatable(0f) }
-    val alpha = remember { Animatable(0f) }
+    val context = LocalContext.current
+    val scale = remember(context) { systemAnimatorScale(context) }
+    val progress = remember { Animatable(if (scale <= 0f) 1f else 0f) }
+    val alpha = remember { Animatable(if (scale <= 0f) 1f else 0f) }
     LaunchedEffect(Unit) {
-        delay(120)
+        if (scale <= 0f) return@LaunchedEffect
+        val d = scaledDelayMs(120, scale)
+        if (d > 0) delay(d)
         launch { alpha.animateTo(1f, tween(300)) }
         progress.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow))
     }

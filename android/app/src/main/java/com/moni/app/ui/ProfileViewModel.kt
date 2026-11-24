@@ -2,8 +2,6 @@ package com.moni.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.moni.app.data.Category
-import com.moni.app.data.CategoryRepository
 import com.moni.app.data.Profile
 import com.moni.app.data.ProfileRepository
 import kotlinx.coroutines.CancellationException
@@ -15,8 +13,8 @@ import kotlinx.coroutines.launch
 
 data class ProfileState(
     val profile: Profile? = null,
-    /** Active and archived. */
-    val categories: List<Category> = emptyList(),
+    val loading: Boolean = false,
+    val loadError: String? = null,
     val busy: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -24,19 +22,29 @@ data class ProfileState(
 
 class ProfileViewModel : ViewModel() {
     private val profiles = ProfileRepository()
-    private val categoriesRepo = CategoryRepository()
     private val _state = MutableStateFlow(ProfileState())
     val state: StateFlow<ProfileState> = _state.asStateFlow()
-    private var loaded = false
+    private var loadedSessionKey: Int = -1
 
-    fun loadOnce() {
-        if (loaded) return
-        loaded = true
+    fun loadOnce(sessionKey: Int) {
+        if (loadedSessionKey == sessionKey && _state.value.loadError == null) return
+        _state.value = ProfileState(loading = true)
         viewModelScope.launch {
-            runCatching { profiles.load() }.onSuccess { p -> _state.update { it.copy(profile = p) } }
-            runCatching { categoriesRepo.listAll() }.onSuccess { c -> _state.update { it.copy(categories = c) } }
-                .onFailure { e -> if (e is CancellationException) throw e; _state.update { it.copy(error = friendlyError(e)) } }
+            try {
+                val p = profiles.load()
+                loadedSessionKey = sessionKey
+                _state.update { it.copy(profile = p, loading = false, loadError = null) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(loading = false, loadError = friendlyError(e)) }
+            }
         }
+    }
+
+    fun reset() {
+        loadedSessionKey = -1
+        _state.value = ProfileState()
     }
 
     fun clearMessages() = _state.update { it.copy(error = null, notice = null) }
@@ -51,24 +59,9 @@ class ProfileViewModel : ViewModel() {
         profiles.updatePassword(password)
     }
 
-    fun createCategory(name: String, kind: String, icon: String, onDone: () -> Unit, changed: () -> Unit) =
-        run(null, onDone, changed) { categoriesRepo.create(name.trim(), kind, icon); reloadCategories() }
-
-    fun updateCategory(id: String, name: String, icon: String, onDone: () -> Unit, changed: () -> Unit) =
-        run(null, onDone, changed) { categoriesRepo.update(id, name.trim(), icon); reloadCategories() }
-
-    fun setArchived(id: String, archived: Boolean, onDone: () -> Unit, changed: () -> Unit) =
-        run(null, onDone, changed) { categoriesRepo.setArchived(id, archived); reloadCategories() }
-
-    private suspend fun reloadCategories() {
-        val c = categoriesRepo.listAll()
-        _state.update { it.copy(categories = c) }
-    }
-
     private fun run(
         notice: String?,
         onDone: () -> Unit,
-        changed: () -> Unit = {},
         block: suspend () -> Unit,
     ) {
         if (_state.value.busy) return
@@ -77,14 +70,11 @@ class ProfileViewModel : ViewModel() {
             try {
                 block()
                 _state.update { it.copy(busy = false, notice = notice) }
-                changed()
                 onDone()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val msg = e.message.orEmpty().lowercase()
-                val text = if ("23505" in msg || "duplicate key" in msg) "Ya existe una categoría con ese nombre" else friendlyError(e)
-                _state.update { it.copy(busy = false, error = text) }
+                _state.update { it.copy(busy = false, error = friendlyError(e)) }
             }
         }
     }

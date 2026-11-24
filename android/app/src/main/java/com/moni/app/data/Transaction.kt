@@ -25,9 +25,9 @@ data class Transaction(
     val isIncome get() = type == "income"
 }
 
-/** workspace_id and user_id are omitted: the DB defaults them to the caller's workspace. */
 @Serializable
 data class NewTransaction(
+    @SerialName("workspace_id") val workspaceId: String,
     val type: String,
     val amount: Double,
     @SerialName("category_id") val categoryId: String,
@@ -61,16 +61,3 @@ data class Account(
     @SerialName("due_day") val dueDay: Int? = null,
     val archived: Boolean = false,
 )
-
-data class Summary(val income: Double, val expense: Double) {
-    val balance get() = income - expense
-}
-
-/** Callers pass confirmed transactions only; pending/ignored never count. */
-fun List<Transaction>.summary(): Summary {
-    val confirmed = filter { it.status == "confirmed" }
-    return Summary(
-        income = confirmed.filter { it.isIncome }.sumOf { it.amount },
-        expense = confirmed.filterNot { it.isIncome }.sumOf { it.amount },
-    )
-}

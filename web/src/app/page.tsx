@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import { summarize, toFinanceTransaction, type Account, type Category } from "@moni/shared";
 import { createClient } from "@/lib/supabase/server";
 import Dashboard from "./dashboard";
+import Landing from "./landing/landing";
 
 const COLS = "id, user_id, type, amount, occurred_at, note, category_id, account_id, status, source, merchant";
 
@@ -10,7 +10,8 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Signed-out visitors see the marketing landing; signed-in users get the dashboard.
+  if (!user) return <Landing />;
 
   const [confirmed, pending, cats, accs] = await Promise.all([
     supabase

@@ -11,21 +11,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,21 +25,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.R as LucideR
 import com.moni.app.data.Account
 import com.moni.app.data.AccountInput
 import com.moni.app.ui.theme.MoniColors
 import com.moni.app.ui.theme.tabular
 
-private fun parseMoney(s: String): Double? = s.trim().replace(',', '.').toDoubleOrNull()
-
-private fun plain(v: Double?): String =
-    if (v == null) "" else java.math.BigDecimal.valueOf(v).stripTrailingZeros().toPlainString()
-
 /** Create (account == null) or edit sheet. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AccountFormSheet(
     account: Account?,
@@ -57,12 +47,7 @@ internal fun AccountFormSheet(
     onArchive: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = { if (!busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MoniColors.card,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
+    MoniBottomSheet(onDismiss = onDismiss, busy = busy) {
         AccountFormContent(account, busy, error, onSave, onArchive)
     }
 }
@@ -76,35 +61,48 @@ private fun AccountFormContent(
     onSave: (AccountInput) -> Unit,
     onArchive: () -> Unit,
 ) {
-    var name by rememberSaveable { mutableStateOf(account?.name ?: "") }
-    var type by rememberSaveable { mutableStateOf(account?.type ?: "debit") }
-    var institution by rememberSaveable { mutableStateOf(account?.institution ?: "") }
-    var opening by rememberSaveable { mutableStateOf(if (account != null) plain(account.openingBalance) else "") }
-    var last4 by rememberSaveable { mutableStateOf(account?.last4 ?: "") }
-    var limit by rememberSaveable { mutableStateOf(plain(account?.creditLimit)) }
-    var closing by rememberSaveable { mutableStateOf(account?.closingDay?.toString() ?: "") }
-    var due by rememberSaveable { mutableStateOf(account?.dueDay?.toString() ?: "") }
-    var submitted by rememberSaveable { mutableStateOf(false) }
-    var confirmArchive by rememberSaveable { mutableStateOf(false) }
+    val formKey = account?.id ?: "new"
+    var name by rememberSaveable(formKey) { mutableStateOf(account?.name ?: "") }
+    var type by rememberSaveable(formKey) { mutableStateOf(account?.type ?: "debit") }
+    var institution by rememberSaveable(formKey) { mutableStateOf(account?.institution ?: "") }
+    var opening by rememberSaveable(formKey) { mutableStateOf(if (account != null) plainDecimal(account.openingBalance) else "") }
+    var last4 by rememberSaveable(formKey) { mutableStateOf(account?.last4 ?: "") }
+    var limit by rememberSaveable(formKey) { mutableStateOf(plainDecimal(account?.creditLimit)) }
+    var closing by rememberSaveable(formKey) { mutableStateOf(account?.closingDay?.toString() ?: "") }
+    var due by rememberSaveable(formKey) { mutableStateOf(account?.dueDay?.toString() ?: "") }
+    var submitted by rememberSaveable(formKey) { mutableStateOf(false) }
+    var confirmArchive by rememberSaveable(formKey) { mutableStateOf(false) }
+
+    val openingReveal = rememberRevealState()
+    val limitReveal = rememberRevealState()
 
     val card = type == "credit_card"
-    val openingValue = if (opening.isBlank()) 0.0 else parseMoney(opening)
-    val limitValue = parseMoney(limit)
+    val (openingValue, openingValidationError) = validateAmount(
+        raw = opening,
+        allowNegative = !card,
+        allowZero = true,
+        allowBlankAsZero = true,
+    )
+    val (limitValue, limitValidationError) = if (card) {
+        validateAmount(raw = limit, allowNegative = false, allowZero = false, allowBlankAsZero = false)
+    } else {
+        null to null
+    }
     val closingValue = closing.trim().toIntOrNull()
     val dueValue = due.trim().toIntOrNull()
 
     val nameError = if (submitted && name.isBlank()) "Escribe un nombre" else null
-    val openingError = if (submitted && (openingValue == null || openingValue < 0 && card)) "Introduce un monto válido" else null
+    val openingError = if (submitted) openingValidationError else null
     val last4Error = if (submitted && card && !Regex("^[0-9]{4}$").matches(last4.trim())) "Deben ser 4 dígitos" else null
-    val limitError = if (submitted && card && (limitValue == null || limitValue <= 0)) "Introduce una línea mayor que 0" else null
+    val limitError = if (submitted && card) limitValidationError else null
     val closingError = if (submitted && card && (closingValue == null || closingValue !in 1..31)) "Del 1 al 31" else null
     val dueError = if (submitted && card && (dueValue == null || dueValue !in 1..31)) "Del 1 al 31" else null
 
     fun submit() {
         submitted = true
         if (busy) return
-        if (name.isBlank() || openingValue == null || (openingValue < 0 && card)) return
-        if (card && (!Regex("^[0-9]{4}$").matches(last4.trim()) || limitValue == null || limitValue <= 0 ||
+        if (name.isBlank() || openingValue == null) return
+        if (card && (!Regex("^[0-9]{4}$").matches(last4.trim()) || limitValue == null ||
                 closingValue == null || closingValue !in 1..31 || dueValue == null || dueValue !in 1..31)) return
         onSave(
             AccountInput(
@@ -123,15 +121,7 @@ private fun AccountFormContent(
     val decimal = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next)
     val number = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
 
-    Column(
-        Modifier
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    SheetColumn {
         Text(
             if (account == null) "Nueva cuenta" else "Editar cuenta",
             color = MoniColors.fg, style = MaterialTheme.typography.titleLarge,
@@ -163,6 +153,22 @@ private fun AccountFormContent(
             prefix = { Text("S/ ") }, singleLine = true, enabled = !busy,
             isError = openingError != null, shape = FieldShape, colors = moniFieldColors(),
             textStyle = MaterialTheme.typography.bodyLarge.tabular,
+            visualTransformation = if (openingReveal.effectiveHidden && opening.isNotEmpty()) PasswordVisualTransformation('•') else VisualTransformation.None,
+            trailingIcon = if (openingReveal.globalHidden) {
+                {
+                    IconButton(
+                        onClick = openingReveal.toggle,
+                        modifier = Modifier.focusProperties { canFocus = false },
+                    ) {
+                        LucideIcon(
+                            if (openingReveal.effectiveHidden) LucideR.drawable.lucide_ic_eye else LucideR.drawable.lucide_ic_eye_off,
+                            if (openingReveal.effectiveHidden) "Mostrar monto" else "Ocultar monto",
+                            tint = MoniColors.mut,
+                            size = 20,
+                        )
+                    }
+                }
+            } else null,
             supportingText = openingError?.let { { FieldMessage(it, true) } },
             keyboardOptions = decimal,
             modifier = Modifier.fillMaxWidth(),
@@ -187,6 +193,22 @@ private fun AccountFormContent(
                     singleLine = true, enabled = !busy,
                     isError = limitError != null, shape = FieldShape, colors = moniFieldColors(),
                     textStyle = MaterialTheme.typography.bodyLarge.tabular,
+                    visualTransformation = if (limitReveal.effectiveHidden && limit.isNotEmpty()) PasswordVisualTransformation('•') else VisualTransformation.None,
+                    trailingIcon = if (limitReveal.globalHidden) {
+                        {
+                            IconButton(
+                                onClick = limitReveal.toggle,
+                                modifier = Modifier.focusProperties { canFocus = false },
+                            ) {
+                                LucideIcon(
+                                    if (limitReveal.effectiveHidden) LucideR.drawable.lucide_ic_eye else LucideR.drawable.lucide_ic_eye_off,
+                                    if (limitReveal.effectiveHidden) "Mostrar monto" else "Ocultar monto",
+                                    tint = MoniColors.mut,
+                                    size = 20,
+                                )
+                            }
+                        }
+                    } else null,
                     supportingText = limitError?.let { { FieldMessage(it, true) } },
                     keyboardOptions = decimal,
                     modifier = Modifier.fillMaxWidth(),

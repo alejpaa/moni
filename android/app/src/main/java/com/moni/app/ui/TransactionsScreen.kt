@@ -29,9 +29,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,9 +46,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -61,8 +66,8 @@ import kotlinx.coroutines.delay
 
 private enum class Filter(val label: String) { All("Todo"), Income("Ingresos"), Expense("Gastos") }
 
-/** Remembers which ids existed at first load so later arrivals can be highlighted. */
-private class RowTracker {
+/** Remembers which ids existed at first load so later arrivals can be highlighted without replaying on tab switches. */
+class RowTracker {
     var baseline: Set<String>? = null
     val newIds = mutableSetOf<String>()
     val animated = mutableSetOf<String>()
@@ -76,29 +81,50 @@ private class RowTracker {
             baseline = b + ids
         }
     }
+
+    /** Registers paginated older rows without highlighting them as newly added. */
+    fun markBaseline(ids: List<String>) {
+        baseline = (baseline ?: emptySet()) + ids
+        animated += ids
+    }
+
+    fun reset() {
+        baseline = null
+        newIds.clear()
+        animated.clear()
+    }
 }
 
-/** "Movimientos" tab: filters, pending-review entry and the transaction list. */
+/** "Movimientos" tab: filters, pending-review entry and the paginated transaction list. */
 @Composable
 fun TransactionsScreen(
     state: UiState,
     contentPadding: PaddingValues,
+    tracker: RowTracker,
     onDelete: (String) -> Unit,
     onOpenReview: () -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+    onRetrySession: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(Filter.All) }
-    val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
-    val tracker = remember { RowTracker() }
-    remember(state.transactions, state.loaded) { tracker.update(state.transactions.map { it.id }, state.loaded) }
+    var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    val categoriesById = remember(state.allCategories) { state.allCategories.associateBy { it.id } }
+    val retry = if (state.sessionRefreshFailed) onRetrySession else onRetry
 
-    val visible = when (filter) {
-        Filter.All -> state.transactions
-        Filter.Income -> state.transactions.filter { it.isIncome }
-        Filter.Expense -> state.transactions.filterNot { it.isIncome }
+    val visible = remember(state.transactions, filter) {
+        when (filter) {
+            Filter.All -> state.transactions
+            Filter.Income -> state.transactions.filter { it.isIncome }
+            Filter.Expense -> state.transactions.filterNot { it.isIncome }
+        }
     }
 
     Column(
-        Modifier.padding(contentPadding).padding(horizontal = 16.dp).fillMaxSize(),
+        Modifier
+            .padding(top = contentPadding.calculateTopPadding())
+            .padding(horizontal = 16.dp)
+            .fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Entrance { ScreenHeader("Movimientos") }
@@ -110,41 +136,111 @@ fun TransactionsScreen(
             }
         }
         AnimatedVisibility(
-            visible = state.pending.isNotEmpty(),
+            visible = !state.isViewer && state.pending.isNotEmpty(),
             enter = expandVertically(moniSpring()) + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) { PendingEntry(state.pending.size, onOpenReview) }
-        state.error?.let { AlertBanner(it) }
+
+        if (state.loadFailed && !state.loaded) {
+            ErrorRetryCard(
+                message = state.error ?: "No se pudieron cargar tus movimientos",
+                onRetry = retry,
+            )
+            return@Column
+        }
+
+        state.error?.let { AlertBanner(it, actionLabel = "Reintentar", onAction = retry) }
 
         val cardShape = RoundedCornerShape(20.dp)
         Entrance(Modifier.weight(1f), delayMs = 140) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .padding(bottom = 4.dp)
                     .shadow(8.dp, cardShape, ambientColor = Color(0x331F1E22), spotColor = Color(0x331F1E22))
                     .clip(cardShape)
                     .background(MoniColors.card),
             ) {
                 if (visible.isEmpty()) {
-                    EmptyState(state.loaded, filtered = state.transactions.isNotEmpty())
+                    EmptyState(
+                        loaded = state.loaded,
+                        filtered = state.transactions.isNotEmpty(),
+                        hasMore = state.hasMoreTransactions,
+                        loadingMore = state.loadingMoreTransactions,
+                        onLoadMore = onLoadMore,
+                        bottomPadding = contentPadding.calculateBottomPadding(),
+                    )
                 } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 8.dp),
+                    ) {
                         itemsIndexed(visible, key = { _, t -> t.id }) { index, t ->
                             TransactionRow(
                                 t = t,
                                 category = categoriesById[t.categoryId],
                                 index = index,
-                                last = index == visible.lastIndex,
+                                last = index == visible.lastIndex && !state.hasMoreTransactions,
                                 tracker = tracker,
-                                onDelete = onDelete,
+                                canDelete = !state.isViewer,
+                                deleting = t.id in state.deletingIds,
+                                onRequestDelete = { pendingDeleteId = t.id },
                                 modifier = Modifier.animateItem(),
                             )
+                        }
+                        if (state.hasMoreTransactions) {
+                            item(key = "load-more") {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    LoadMoreButton(loading = state.loadingMoreTransactions, onClick = onLoadMore)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    val deleteTarget = pendingDeleteId?.let { id -> state.transactions.find { it.id == id } }
+    if (deleteTarget != null) {
+        val isInstallment = deleteTarget.source == "installment"
+        AlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            containerColor = MoniColors.card,
+            title = {
+                Text(
+                    if (isInstallment) "¿Omitir cuota?" else "¿Eliminar movimiento?",
+                    color = MoniColors.fg,
+                )
+            },
+            text = {
+                Text(
+                    if (isInstallment) {
+                        "Esta cuota se marcará como ignorada para que no vuelva a crearse automáticamente."
+                    } else {
+                        "Esta acción no se puede deshacer."
+                    },
+                    color = MoniColors.mut,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = deleteTarget.id !in state.deletingIds,
+                    onClick = {
+                        val id = deleteTarget.id
+                        pendingDeleteId = null
+                        onDelete(id)
+                    },
+                ) {
+                    Text(if (isInstallment) "Ignorar cuota" else "Eliminar", color = MoniColors.exp)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteId = null }) { Text("Cancelar", color = MoniColors.fg) }
+            },
+        )
     }
 }
 
@@ -174,18 +270,39 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(loaded: Boolean, filtered: Boolean) {
+private fun LoadMoreButton(loading: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        enabled = !loading,
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(16.dp), color = MoniColors.acc, strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("Cargando…", color = MoniColors.mut)
+        } else {
+            Text("Cargar más", color = MoniColors.iconStroke)
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    loaded: Boolean,
+    filtered: Boolean,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    onLoadMore: () -> Unit,
+    bottomPadding: androidx.compose.ui.unit.Dp,
+) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
+        Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 24.dp + bottomPadding),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (!loaded) return@Column
         if (filtered) {
-            Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MoniColors.iconTile),
-                contentAlignment = Alignment.Center,
-            ) { LucideIcon(LucideR.drawable.lucide_ic_wallet, null, tint = MoniColors.iconStroke, size = 24) }
+            IconTile(LucideR.drawable.lucide_ic_wallet, size = 56.dp, radius = 16.dp, iconSize = 24)
         } else {
             MoniMascot(112.dp)
         }
@@ -203,6 +320,10 @@ private fun EmptyState(loaded: Boolean, filtered: Boolean) {
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
+        if (hasMore) {
+            Spacer(Modifier.height(12.dp))
+            LoadMoreButton(loading = loadingMore, onClick = onLoadMore)
+        }
     }
 }
 
@@ -213,27 +334,42 @@ private fun TransactionRow(
     index: Int,
     last: Boolean,
     tracker: RowTracker,
-    onDelete: (String) -> Unit,
+    canDelete: Boolean,
+    deleting: Boolean,
+    onRequestDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val animScale = remember(context) { systemAnimatorScale(context) }
     val isNew = t.id in tracker.newIds
-    val skipEntrance = t.id in tracker.animated
+    val skipEntrance = animScale <= 0f || t.id in tracker.animated
     val progress = remember { Animatable(if (skipEntrance) 1f else 0f) }
     val offsetPx = with(LocalDensity.current) { 30.dp.toPx() }
     LaunchedEffect(Unit) {
         if (progress.value < 1f) {
-            // Initial rows stagger 70ms apart; a new row enters immediately.
-            if (!isNew) delay(70L * index.coerceAtMost(10))
+            if (!isNew) {
+                val d = scaledDelayMs(70L * index.coerceAtMost(10), animScale)
+                if (d > 0) delay(d)
+            }
             progress.animateTo(1f, moniSpring())
         }
         tracker.animated += t.id
     }
 
     var faded by remember { mutableStateOf(false) }
-    LaunchedEffect(isNew) { if (isNew) { delay(600); faded = true } }
-    val tint by animateColorAsState(
+    LaunchedEffect(isNew) {
+        if (isNew) {
+            val d = scaledDelayMs(600, animScale)
+            if (d > 0) delay(d)
+            faded = true
+        }
+    }
+    val tint = animateColorAsState(
         targetValue = if (isNew && !faded) MoniColors.newTint else Color.Transparent,
-        animationSpec = if (faded) tween(1600) else snap(),
+        animationSpec = if (faded && animScale > 0f) tween(1600) else snap(),
+        finishedListener = {
+            if (faded) tracker.newIds.remove(t.id)
+        },
         label = "newTint",
     )
 
@@ -252,17 +388,15 @@ private fun TransactionRow(
                         translationY = 18.dp.toPx() * (1f - p)
                     }
                 }
-                .background(tint)
+                .drawBehind {
+                    val c = tint.value
+                    if (c.alpha > 0f) drawRect(c)
+                }
                 .heightIn(min = 56.dp)
-                .padding(start = 16.dp, end = 4.dp),
+                .padding(start = 16.dp, end = if (canDelete) 4.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(MoniColors.iconTile),
-                contentAlignment = Alignment.Center,
-            ) {
-                LucideIcon(categoryIcon(category, t.isIncome), null, tint = MoniColors.iconStroke)
-            }
+            IconTile(categoryIcon(category, t.isIncome))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Row(
@@ -295,14 +429,18 @@ private fun TransactionRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
+            val reveal = rememberRevealState()
             Text(
-                (if (t.isIncome) "+" else "−") + money.format(t.amount),
+                formatSignedMoney(t.amount, t.isIncome, reveal.effectiveHidden),
                 color = if (t.isIncome) MoniColors.inc else MoniColors.exp,
                 style = MaterialTheme.typography.titleSmall.tabular.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
+                modifier = Modifier.revealOnTap(reveal),
             )
-            IconButton(onClick = { onDelete(t.id) }) {
-                LucideIcon(LucideR.drawable.lucide_ic_trash_2, "Eliminar movimiento", tint = MoniColors.mut)
+            if (canDelete) {
+                IconButton(onClick = onRequestDelete, enabled = !deleting) {
+                    LucideIcon(LucideR.drawable.lucide_ic_trash_2, "Eliminar movimiento", tint = MoniColors.mut)
+                }
             }
         }
         if (!last) Box(Modifier.fillMaxWidth().padding(start = 64.dp).height(1.dp).background(MoniColors.divider))

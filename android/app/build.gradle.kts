@@ -28,9 +28,51 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${prop("supabase.anonKey", "")}\"")
     }
 
+    // Release signing from android/local.properties (keystore lives outside the repo).
+    // Never silently fall back to the debug key for release builds.
+    val releaseStoreFile = prop("release.storeFile", "")
+    val hasReleaseKeystore = listOf(
+        releaseStoreFile,
+        prop("release.storePassword", ""),
+        prop("release.keyAlias", ""),
+        prop("release.keyPassword", ""),
+    ).all { it.isNotBlank() }
+
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = prop("release.storePassword", "")
+                keyAlias = prop("release.keyAlias", "")
+                keyPassword = prop("release.keyPassword", "")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    tasks.configureEach {
+        if (name in setOf("validateSigningRelease", "packageRelease", "bundleRelease", "assembleRelease")) {
+            doFirst {
+                if (!hasReleaseKeystore) {
+                    throw GradleException(
+                        "Release keystore not configured. Set release.storeFile, release.storePassword, " +
+                            "release.keyAlias and release.keyPassword in android/local.properties.",
+                    )
+                }
+            }
         }
     }
 
@@ -47,6 +89,8 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

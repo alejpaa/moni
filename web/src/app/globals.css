@@ -122,6 +122,10 @@ h2 {
   from { opacity: 0; transform: translateY(24px) scale(0.85); }
   to { opacity: 1; transform: none; }
 }
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: none; }
+}
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -132,6 +136,11 @@ h2 {
 .anim-error { animation: fade-rise 250ms ease-out both; }
 .anim-peek { animation: peek-in 560ms var(--spring) both; animation-delay: 120ms; }
 .anim-spin { animation: spin 800ms linear infinite; }
+.goal-bar { transform-origin: left; animation: bar-grow 900ms var(--spring) 900ms both; }
+
+/* Landing scroll reveal: visible by default, hidden only once JS has measured it */
+.reveal { transition: opacity 520ms ease-out, transform 520ms var(--spring); transition-delay: var(--delay, 0ms); }
+.reveal[data-reveal="hidden"] { opacity: 0; transform: translateY(18px) scale(0.96); }
 
 dialog.sheet[open] { animation: sheet-in 400ms var(--spring) both; }
 dialog.sheet[open]::backdrop { animation: backdrop-in 250ms ease-out both; }
