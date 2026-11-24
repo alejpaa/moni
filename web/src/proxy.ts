@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
 
 // Refreshes the Supabase session cookie on every request and redirects
-// signed-out users to /login. This is an optimistic check only: pages still
+// signed-out users to /login (the landing at "/" is public). This is an optimistic check only: pages still
 // call getUser() and RLS enforces access in the database.
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -31,10 +31,11 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  const path = request.nextUrl.pathname;
+  if (!user && path !== "/" && !path.startsWith("/login")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (user && request.nextUrl.pathname.startsWith("/login")) {
+  if (user && path.startsWith("/login")) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
