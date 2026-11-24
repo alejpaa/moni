@@ -14,6 +14,9 @@ object Prefs {
     private const val KEY_CARD_NOTIFS_ENABLED = "card_notifs_enabled"
     private const val KEY_CARD_NOTIFS_DAYS_BEFORE = "card_notifs_days_before"
     private const val KEY_CARD_NOTIF_LAST_PREFIX = "card_notif_last_"
+    private const val KEY_BACKGROUNDED_AT_MS = "backgrounded_at_ms"
+    private const val KEY_NOTIF_ID_PREFIX = "notif_id_"
+    private const val KEY_NEXT_NOTIF_ID = "next_notif_id"
     const val DEFAULT_CARD_NOTIFY_DAYS = 3
 
     @Volatile
@@ -30,6 +33,9 @@ object Prefs {
 
     private val _cardNotifyDaysBefore = MutableStateFlow(DEFAULT_CARD_NOTIFY_DAYS)
     val cardNotifyDaysBefore: StateFlow<Int> = _cardNotifyDaysBefore.asStateFlow()
+
+    private val _revealEpoch = MutableStateFlow(0)
+    val revealEpoch: StateFlow<Int> = _revealEpoch.asStateFlow()
 
     fun init(context: Context) {
         if (prefs != null) return
@@ -70,5 +76,37 @@ object Prefs {
 
     fun markCardNotifSent(accountId: String, milestoneKey: String) {
         prefs?.edit()?.putString(KEY_CARD_NOTIF_LAST_PREFIX + accountId, milestoneKey)?.apply()
+    }
+
+    /** Persisted synchronously on ON_STOP so background timestamps survive rapid teardown. */
+    fun setBackgroundedAtMsSync(ms: Long) {
+        prefs?.edit()?.putLong(KEY_BACKGROUNDED_AT_MS, ms)?.commit()
+    }
+
+    fun consumeBackgroundedAtMs(): Long? {
+        val sp = prefs ?: return null
+        if (!sp.contains(KEY_BACKGROUNDED_AT_MS)) return null
+        val value = sp.getLong(KEY_BACKGROUNDED_AT_MS, -1L)
+        sp.edit().remove(KEY_BACKGROUNDED_AT_MS).apply()
+        return value.takeIf { it >= 0L }
+    }
+
+    fun clearBackgroundedAtMs() {
+        prefs?.edit()?.remove(KEY_BACKGROUNDED_AT_MS)?.apply()
+    }
+
+    /** Returns a stable, non-colliding notification / PendingIntent id for [accountId]. */
+    fun notificationIdFor(accountId: String): Int = synchronized(this) {
+        val sp = prefs ?: return@synchronized (accountId.hashCode() and 0x7FFFFFFF).coerceAtLeast(1000)
+        val key = KEY_NOTIF_ID_PREFIX + accountId
+        val existing = sp.getInt(key, -1)
+        if (existing > 0) return@synchronized existing
+        val next = sp.getInt(KEY_NEXT_NOTIF_ID, 1000)
+        sp.edit().putInt(key, next).putInt(KEY_NEXT_NOTIF_ID, next + 1).apply()
+        next
+    }
+
+    fun bumpRevealEpoch() {
+        _revealEpoch.value += 1
     }
 }

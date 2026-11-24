@@ -42,15 +42,15 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.ui.theme.MoniColors
+import kotlinx.coroutines.delay
 
 private enum class Tab(val label: String, val icon: Int) {
     Home("Inicio", LucideR.drawable.lucide_ic_house),
@@ -76,19 +77,30 @@ private val FabGap = 12.dp
  * Owns the add and review sheets so any tab can open them.
  */
 @Composable
-fun AppShell(state: UiState, vm: MoniViewModel) {
+fun AppShell(state: UiState, vm: MoniViewModel, profileVm: ProfileViewModel) {
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var showReview by rememberSaveable { mutableStateOf(false) }
-    // Closes the review sheet once the last pending item is resolved.
-    LaunchedEffect(state.pending.isEmpty()) { if (state.pending.isEmpty()) showReview = false }
+    val context = LocalContext.current
+    val animScale = remember(context) { systemAnimatorScale(context) }
+
+    // Closes the review sheet once the last pending item is resolved or if role becomes viewer.
+    LaunchedEffect(state.pending.isEmpty(), state.isViewer) {
+        if (state.pending.isEmpty() || state.isViewer) showReview = false
+        if (state.isViewer) showAdd = false
+    }
     BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
 
     // Tabs lay out above the floating bar and FAB: bar + FAB + gaps + system navigation inset.
     val contentPadding = PaddingValues(
         bottom = BarHeight + BarGap * 2 + FabGap + FabSize + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
     )
-    val openReview = { vm.clearError(); showReview = true }
+    val openReview = {
+        if (!state.isViewer) {
+            vm.clearError()
+            showReview = true
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(MoniColors.bg)) {
         AnimatedContent(
@@ -100,9 +112,10 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
             },
             label = "tab",
         ) { current ->
-            val animateEntrance = remember(current) { vm.shouldAnimateEntrance(current.name) }
+            val animateEntrance = remember(current) { animScale > 0f && vm.shouldAnimateEntrance(current.name) }
             LaunchedEffect(current) {
-                delay(850)
+                val wait = scaledDelayMs(850, animScale)
+                if (wait > 0) delay(wait)
                 vm.markTabEntered(current.name)
             }
             DisposableEffect(current) {
@@ -119,6 +132,8 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
                         onBarsAnimated = vm::markDashboardBarsAnimated,
                         onSeeAll = { tab = Tab.Transactions },
                         onOpenReview = openReview,
+                        onRetry = vm::refresh,
+                        onRetrySession = vm::retrySessionOrRefresh,
                     )
                     Tab.Transactions -> TransactionsScreen(
                         state = state,
@@ -126,6 +141,8 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
                         tracker = vm.rowTracker,
                         onDelete = vm::delete,
                         onOpenReview = openReview,
+                        onLoadMore = vm::loadMoreTransactions,
+                        onRetry = vm::refresh,
                     )
                     Tab.Accounts -> AccountsScreen(
                         state = state,
@@ -133,9 +150,11 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
                         onClearError = vm::clearError,
                         onSave = vm::saveAccount,
                         onSetArchived = vm::setAccountArchived,
+                        onRetry = vm::refresh,
                     )
                     Tab.Profile -> ProfileScreen(
                         state = state,
+                        vm = profileVm,
                         contentPadding = contentPadding,
                         onSignOut = vm::signOut,
                         onClearSheetError = vm::clearError,
@@ -155,19 +174,22 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
             verticalArrangement = Arrangement.spacedBy(FabGap),
             horizontalAlignment = Alignment.End,
         ) {
-            AddButton { vm.clearError(); showAdd = true }
+            if (!state.isViewer) {
+                AddButton { vm.clearError(); showAdd = true }
+            }
             FloatingTabBar(tab, { tab = it }, Modifier.fillMaxWidth())
         }
     }
 
-    if (showAdd) {
+    if (showAdd && !state.isViewer) {
         AddTransactionSheet(
             state = state,
             onAdd = vm::add,
+            onRetryCategories = vm::retryCategories,
             onDismiss = { showAdd = false; vm.clearError() },
         )
     }
-    if (showReview) {
+    if (showReview && !state.isViewer) {
         ReviewSheet(
             state = state,
             onConfirm = vm::confirm,
@@ -190,10 +212,10 @@ private fun FloatingTabBar(selected: Tab, onSelect: (Tab) -> Unit, modifier: Mod
             .selectableGroup(),
     ) {
         val tabWidth = maxWidth / Tab.entries.size
-        val x by animateDpAsState(tabWidth * selected.ordinal, moniSpring(), label = "tabIndicator")
+        val x = animateDpAsState(tabWidth * selected.ordinal, moniSpring(), label = "tabIndicator")
         Box(
             Modifier
-                .offset { IntOffset(x.roundToPx(), 0) }
+                .offset { IntOffset(x.value.roundToPx(), 0) }
                 .width(tabWidth)
                 .fillMaxSize()
                 .clip(RoundedCornerShape(22.dp))

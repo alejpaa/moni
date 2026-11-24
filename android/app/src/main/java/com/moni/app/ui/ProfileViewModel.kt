@@ -13,6 +13,8 @@ import kotlinx.coroutines.launch
 
 data class ProfileState(
     val profile: Profile? = null,
+    val loading: Boolean = false,
+    val loadError: String? = null,
     val busy: Boolean = false,
     val error: String? = null,
     val notice: String? = null,
@@ -25,14 +27,24 @@ class ProfileViewModel : ViewModel() {
     private var loadedSessionKey: Int = -1
 
     fun loadOnce(sessionKey: Int) {
-        if (loadedSessionKey == sessionKey) return
-        loadedSessionKey = sessionKey
-        _state.value = ProfileState()
+        if (loadedSessionKey == sessionKey && _state.value.loadError == null) return
+        _state.value = ProfileState(loading = true)
         viewModelScope.launch {
-            runCatching { profiles.load() }
-                .onSuccess { p -> _state.update { it.copy(profile = p) } }
-                .onFailure { e -> if (e is CancellationException) throw e; _state.update { it.copy(error = friendlyError(e)) } }
+            try {
+                val p = profiles.load()
+                loadedSessionKey = sessionKey
+                _state.update { it.copy(profile = p, loading = false, loadError = null) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(loading = false, loadError = friendlyError(e)) }
+            }
         }
+    }
+
+    fun reset() {
+        loadedSessionKey = -1
+        _state.value = ProfileState()
     }
 
     fun clearMessages() = _state.update { it.copy(error = null, notice = null) }

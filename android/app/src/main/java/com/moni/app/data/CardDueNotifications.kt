@@ -23,6 +23,9 @@ import androidx.work.WorkerParameters
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.MainActivity
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.exceptions.RestException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.time.LocalDate
 import java.time.YearMonth
@@ -71,19 +74,27 @@ internal object CardDueNotifications {
         }
         val body = when (daysUntilDue) {
             0 -> "Tu tarjeta ${account.name} vence hoy"
-            1 -> "Tu tarjeta ${account.name} vence en 1 día"
+            1 -> "Tu tarjeta ${account.name} vence mañana"
             else -> "Tu tarjeta ${account.name} vence en $daysUntilDue días"
         }
 
+        val notifId = Prefs.notificationIdFor(account.id)
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            account.id.hashCode(),
+            notifId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+        val publicVersion = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(LucideR.drawable.lucide_ic_credit_card)
+            .setColor(0xFF9C8CD9.toInt())
+            .setContentTitle("moni")
+            .setContentText("Tienes un recordatorio de pago")
+            .build()
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(LucideR.drawable.lucide_ic_credit_card)
@@ -91,12 +102,14 @@ internal object CardDueNotifications {
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
 
         try {
-            NotificationManagerCompat.from(context).notify(account.id.hashCode(), notification)
+            NotificationManagerCompat.from(context).notify(notifId, notification)
         } catch (_: SecurityException) {
             // Permission revoked concurrently.
         }
@@ -147,9 +160,10 @@ class CardDueWorker(
             supabase.auth.awaitInitialization()
             if (supabase.auth.currentSessionOrNull() == null) return Result.success()
 
-            val accounts = AccountRepository().list(includeArchived = false)
+            val workspace = WorkspaceRepository().resolveActiveWorkspace()
+            val accounts = AccountRepository().list(workspace.workspaceId, includeArchived = false)
             val daysBefore = Prefs.cardNotifyDaysBefore.value
-            val today = LocalDate.now()
+            val today = LocalDate.now(LIMA_ZONE)
 
             accounts
                 .filter { it.type == "credit_card" && !it.archived && it.dueDay != null }
@@ -157,19 +171,35 @@ class CardDueWorker(
                     val dueDay = card.dueDay ?: return@forEach
                     val dueDate = CardDueNotifications.nextDueDate(dueDay, today)
                     val daysUntil = ChronoUnit.DAYS.between(today, dueDate).toInt()
-                    if (daysUntil == daysBefore || daysUntil == 0) {
-                        val milestoneKey = "$dueDate:$daysUntil"
-                        if (!Prefs.wasCardNotifSent(card.id, milestoneKey)) {
-                            CardDueNotifications.notifyCardDue(applicationContext, card, daysUntil)
-                            Prefs.markCardNotifSent(card.id, milestoneKey)
+                    when {
+                        daysUntil == 0 -> {
+                            val key = "$dueDate:due"
+                            if (!Prefs.wasCardNotifSent(card.id, key)) {
+                                CardDueNotifications.notifyCardDue(applicationContext, card, daysUntil)
+                                Prefs.markCardNotifSent(card.id, key)
+                            }
+                        }
+                        daysUntil in 1..daysBefore -> {
+                            val key = "$dueDate:advance"
+                            if (!Prefs.wasCardNotifSent(card.id, key)) {
+                                CardDueNotifications.notifyCardDue(applicationContext, card, daysUntil)
+                                Prefs.markCardNotifSent(card.id, key)
+                            }
                         }
                     }
                 }
             Result.success()
-        } catch (_: IOException) {
-            Result.retry()
-        } catch (_: Exception) {
-            Result.success()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (runAttemptCount < 3 && isTransientFailure(e)) Result.retry() else Result.failure()
         }
+    }
+
+    private fun isTransientFailure(e: Exception): Boolean {
+        if (e is IOException || e is HttpRequestTimeoutException) return true
+        if (e is RestException && e.statusCode in 500..599) return true
+        val msg = (e.message ?: "").lowercase()
+        return "timeout" in msg || "timed out" in msg || "unable to resolve host" in msg || "failed to connect" in msg
     }
 }

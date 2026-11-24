@@ -71,6 +71,8 @@ fun LoginScreen(
     var showPassword by rememberSaveable { mutableStateOf(false) }
     var emailTouched by rememberSaveable { mutableStateOf(false) }
     var passwordTouched by rememberSaveable { mutableStateOf(false) }
+    var emailHadFocus by remember { mutableStateOf(false) }
+    var passwordHadFocus by remember { mutableStateOf(false) }
     var submitted by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val signUp = mode == 1
@@ -143,7 +145,10 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentType = ContentType.EmailAddress }
-                        .onFocusChanged { if (!it.isFocused && email.isNotEmpty()) emailTouched = true },
+                        .onFocusChanged {
+                            if (it.isFocused) emailHadFocus = true
+                            else if (emailHadFocus) emailTouched = true
+                        },
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -184,7 +189,10 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentType = if (signUp) ContentType.NewPassword else ContentType.Password }
-                        .onFocusChanged { if (!it.isFocused && password.isNotEmpty()) passwordTouched = true },
+                        .onFocusChanged {
+                            if (it.isFocused) passwordHadFocus = true
+                            else if (passwordHadFocus) passwordTouched = true
+                        },
                 )
                 Spacer(Modifier.height(8.dp))
 

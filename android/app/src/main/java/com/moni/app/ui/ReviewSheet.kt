@@ -21,11 +21,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,7 +76,6 @@ internal fun PendingEntry(count: Int, onClick: () -> Unit) {
 }
 
 /** Bottom sheet that lists pending (auto-captured) movements to confirm or ignore. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReviewSheet(
     state: UiState,
@@ -87,13 +83,16 @@ internal fun ReviewSheet(
     onIgnore: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MoniColors.card,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
-        ReviewContent(state.pending, state.categories, state.accounts, state.sheetError, onConfirm, onIgnore)
+    MoniBottomSheet(onDismiss = onDismiss) {
+        ReviewContent(
+            pending = state.pending,
+            categories = state.categories,
+            accounts = state.accounts,
+            workingIds = state.reviewWorkingIds,
+            error = state.sheetError,
+            onConfirm = onConfirm,
+            onIgnore = onIgnore,
+        )
     }
 }
 
@@ -102,6 +101,7 @@ private fun ReviewContent(
     pending: List<Transaction>,
     categories: List<Category>,
     accounts: List<Account>,
+    workingIds: Set<String>,
     error: String?,
     onConfirm: (String, String?, String?) -> Unit,
     onIgnore: (String) -> Unit,
@@ -117,7 +117,15 @@ private fun ReviewContent(
         AlertBanner(error)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
             itemsIndexed(pending, key = { _, t -> t.id }) { _, t ->
-                ReviewItem(t, categories, accounts, onConfirm, onIgnore, Modifier.animateItem())
+                ReviewItem(
+                    t = t,
+                    categories = categories,
+                    accounts = accounts,
+                    working = t.id in workingIds,
+                    onConfirm = onConfirm,
+                    onIgnore = onIgnore,
+                    modifier = Modifier.animateItem(),
+                )
             }
         }
     }
@@ -128,14 +136,14 @@ private fun ReviewItem(
     t: Transaction,
     categories: List<Category>,
     accounts: List<Account>,
+    working: Boolean,
     onConfirm: (String, String?, String?) -> Unit,
     onIgnore: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var categoryId by rememberSaveable(t.id) { mutableStateOf(t.categoryId) }
     var accountId by rememberSaveable(t.id) { mutableStateOf(t.accountId) }
-    var working by rememberSaveable(t.id) { mutableStateOf(false) }
-    val kindCategories = categories.filter { it.kind == t.type }
+    val kindCategories = remember(categories, t.type) { categories.filter { it.kind == t.type } }
     val title = t.merchant?.takeIf { it.isNotBlank() } ?: t.note?.takeIf { it.isNotBlank() }
         ?: if (t.isIncome) "Ingreso" else "Gasto"
     val shape = RoundedCornerShape(18.dp)
@@ -153,7 +161,7 @@ private fun ReviewItem(
                 formatSignedMoney(t.amount, t.isIncome, reveal.effectiveHidden),
                 color = if (t.isIncome) MoniColors.inc else MoniColors.exp,
                 style = MaterialTheme.typography.titleSmall.tabular.copy(fontWeight = FontWeight.SemiBold),
-                modifier = Modifier.revealOnTap(reveal),
+                modifier = Modifier.revealOnTap(reveal, label = title),
             )
         }
         Text("Categoría", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
@@ -175,14 +183,15 @@ private fun ReviewItem(
                 Modifier
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable(enabled = !working, role = Role.Button) { working = true; onIgnore(t.id) }
+                    .clickable(enabled = !working, role = Role.Button) { onIgnore(t.id) }
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center,
             ) { Text("Ignorar", color = MoniColors.mut, style = MaterialTheme.typography.labelLarge) }
             PrimaryButton(
                 "Confirmar",
-                onClick = { working = true; onConfirm(t.id, categoryId, accountId) },
+                onClick = { onConfirm(t.id, categoryId, accountId) },
                 enabled = !working,
+                loading = working,
                 icon = LucideR.drawable.lucide_ic_check,
                 modifier = Modifier.weight(1f),
             )

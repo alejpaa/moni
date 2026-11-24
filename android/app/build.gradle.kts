@@ -29,23 +29,49 @@ android {
     }
 
     // Release signing from android/local.properties (keystore lives outside the repo).
-    // Without those keys the release build falls back to the debug key.
+    // Never silently fall back to the debug key for release builds.
+    val releaseStoreFile = prop("release.storeFile", "")
+    val hasReleaseKeystore = listOf(
+        releaseStoreFile,
+        prop("release.storePassword", ""),
+        prop("release.keyAlias", ""),
+        prop("release.keyPassword", ""),
+    ).all { it.isNotBlank() }
+
     signingConfigs {
-        create("release") {
-            prop("release.storeFile", "").takeIf { it.isNotEmpty() }?.let { storeFile = file(it) }
-            storePassword = prop("release.storePassword", "")
-            keyAlias = prop("release.keyAlias", "")
-            keyPassword = prop("release.keyPassword", "")
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = prop("release.storePassword", "")
+                keyAlias = prop("release.keyAlias", "")
+                keyPassword = prop("release.keyPassword", "")
+            }
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = if (localProps.containsKey("release.storeFile")) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    tasks.configureEach {
+        if (name in setOf("validateSigningRelease", "packageRelease", "bundleRelease", "assembleRelease")) {
+            doFirst {
+                if (!hasReleaseKeystore) {
+                    throw GradleException(
+                        "Release keystore not configured. Set release.storeFile, release.storePassword, " +
+                            "release.keyAlias and release.keyPassword in android/local.properties.",
+                    )
+                }
             }
         }
     }

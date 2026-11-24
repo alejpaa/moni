@@ -1,8 +1,8 @@
 package com.moni.app.data
 
 import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -10,17 +10,22 @@ import kotlinx.serialization.json.put
 class TransactionRepository {
     private val table get() = supabase.from("transactions")
 
+    private val txColumns = Columns.list(
+        "id", "workspace_id", "user_id", "type", "amount", "category_id",
+        "account_id", "merchant", "source", "status", "occurred_at", "note", "reminder_id",
+    )
+
     fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
     fun currentEmail(): String? = supabase.auth.currentUserOrNull()?.email
 
     suspend fun signIn(email: String, password: String) =
-        supabase.auth.signInWith(Email) {
+        supabase.auth.signInWith(io.github.jan.supabase.auth.providers.builtin.Email) {
             this.email = email
             this.password = password
         }
 
     suspend fun signUp(email: String, password: String) {
-        supabase.auth.signUpWith(Email) {
+        supabase.auth.signUpWith(io.github.jan.supabase.auth.providers.builtin.Email) {
             this.email = email
             this.password = password
         }
@@ -28,18 +33,30 @@ class TransactionRepository {
 
     suspend fun signOut() = supabase.auth.signOut()
 
-    suspend fun list(): List<Transaction> = byStatus("confirmed", 100)
-
-    suspend fun listPending(): List<Transaction> = byStatus("pending", 50)
-
-    private suspend fun byStatus(status: String, max: Long): List<Transaction> =
-        table.select {
-            filter { eq("status", status) }
+    suspend fun listPage(workspaceId: String, offset: Long = 0L, pageSize: Long = PAGE_SIZE): List<Transaction> =
+        table.select(txColumns) {
+            filter {
+                eq("workspace_id", workspaceId)
+                eq("status", "confirmed")
+            }
             order("occurred_at", Order.DESCENDING)
-            limit(max)
+            order("id", Order.DESCENDING)
+            range(offset, offset + pageSize - 1)
+        }.decodeList()
+
+    suspend fun listPending(workspaceId: String): List<Transaction> =
+        table.select(txColumns) {
+            filter {
+                eq("workspace_id", workspaceId)
+                eq("status", "pending")
+            }
+            order("occurred_at", Order.DESCENDING)
+            order("id", Order.DESCENDING)
+            limit(PAGE_SIZE)
         }.decodeList()
 
     suspend fun add(
+        workspaceId: String,
         type: String,
         amount: Double,
         categoryId: String,
@@ -47,12 +64,28 @@ class TransactionRepository {
         note: String?,
         reminderId: String? = null,
     ): Transaction =
-        table.insert(NewTransaction(type, round2(amount), categoryId, accountId, note, reminderId = reminderId)) {
-            select()
+        table.insert(
+            NewTransaction(
+                workspaceId = workspaceId,
+                type = type,
+                amount = round2(amount),
+                categoryId = categoryId,
+                accountId = accountId,
+                note = note,
+                reminderId = reminderId,
+            ),
+        ) {
+            select(txColumns)
         }.decodeSingle()
 
-    /** Confirms or ignores a pending row, optionally reassigning category/account. */
-    suspend fun review(id: String, status: String, categoryId: String? = null, accountId: String? = null): Transaction {
+    /** Confirms or ignores a pending/installment row, optionally reassigning category/account. */
+    suspend fun review(
+        workspaceId: String,
+        id: String,
+        status: String,
+        categoryId: String? = null,
+        accountId: String? = null,
+    ): Transaction {
         // Built by hand so unchanged fields are never sent (a null would clear the column).
         val patch = buildJsonObject {
             put("status", status)
@@ -60,12 +93,24 @@ class TransactionRepository {
             accountId?.let { put("account_id", it) }
         }
         return table.update(patch) {
-            filter { eq("id", id) }
-            select()
+            filter {
+                eq("id", id)
+                eq("workspace_id", workspaceId)
+            }
+            select(txColumns)
         }.decodeSingle()
     }
 
-    suspend fun delete(id: String) {
-        table.delete { filter { eq("id", id) } }
+    suspend fun delete(workspaceId: String, id: String) {
+        table.delete {
+            filter {
+                eq("id", id)
+                eq("workspace_id", workspaceId)
+            }
+        }
+    }
+
+    companion object {
+        const val PAGE_SIZE: Long = 50L
     }
 }

@@ -11,7 +11,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,46 +29,41 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ripple
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.BuildConfig
 import com.moni.app.data.CardDueNotifications
@@ -85,6 +79,7 @@ private enum class ProfileSheet { Name, Password, Categories }
 @Composable
 fun ProfileScreen(
     state: UiState,
+    vm: ProfileViewModel,
     contentPadding: PaddingValues,
     onSignOut: () -> Unit,
     onClearSheetError: () -> Unit,
@@ -92,12 +87,11 @@ fun ProfileScreen(
     onUpdateCategory: (id: String, name: String, icon: String, onDone: () -> Unit) -> Unit,
     onSetCategoryArchived: (id: String, archived: Boolean, onDone: () -> Unit) -> Unit,
 ) {
-    val vm: ProfileViewModel = viewModel()
     val profileState by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.sessionKey) { vm.loadOnce(state.sessionKey) }
 
-    var sheet by remember { mutableStateOf<ProfileSheet?>(null) }
-    var confirmSignOut by remember { mutableStateOf(false) }
+    var sheet by rememberSaveable { mutableStateOf<ProfileSheet?>(null) }
+    var confirmSignOut by rememberSaveable { mutableStateOf(false) }
     val close = { sheet = null; vm.clearMessages(); onClearSheetError() }
     val open = { s: ProfileSheet -> vm.clearMessages(); onClearSheetError(); sheet = s }
 
@@ -110,8 +104,8 @@ fun ProfileScreen(
     val context = LocalContext.current
     val activity = remember(context) { context.findFragmentActivity() }
     var bioStatus by remember { mutableStateOf(biometricStatus(context)) }
-    var lockError by remember { mutableStateOf<String?>(null) }
-    var notifError by remember { mutableStateOf<String?>(null) }
+    var lockError by rememberSaveable { mutableStateOf<String?>(null) }
+    var notifError by rememberSaveable { mutableStateOf<String?>(null) }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -151,13 +145,22 @@ fun ProfileScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { Entrance { ScreenHeader("Perfil") } }
-        item {
+        item(key = "header") { Entrance { ScreenHeader("Perfil") } }
+        profileState.loadError?.let { loadErr ->
+            item(key = "profile-load-error") {
+                AlertBanner(
+                    message = loadErr,
+                    actionLabel = "Reintentar",
+                    onAction = { vm.loadOnce(state.sessionKey) },
+                )
+            }
+        }
+        item(key = "card") {
             Entrance(delayMs = 60) {
                 ProfileCard(name = name, email = shownEmail, onEdit = { open(ProfileSheet.Name) })
             }
         }
-        item {
+        item(key = "privacy") {
             Entrance(delayMs = 100) {
                 SettingsGroup("Privacidad") {
                     SettingsSwitchRow(
@@ -170,14 +173,14 @@ fun ProfileScreen(
                 }
             }
         }
-        item {
+        item(key = "security") {
             Entrance(delayMs = 120) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsGroup("Seguridad") {
                         SettingsSwitchRow(
                             icon = LucideR.drawable.lucide_ic_fingerprint_pattern,
                             title = "Bloqueo con biometría",
-                            subtitle = if (bioStatus.available) "Pide huella o bloqueo al abrir moni" else bioStatus.reason,
+                            subtitle = if (bioStatus.available) "Pide huella o bloqueo al abrir y tras 30 s fuera" else bioStatus.reason,
                             checked = appLockEnabled && bioStatus.available,
                             enabled = bioStatus.available,
                             onCheckedChange = { enable ->
@@ -202,13 +205,13 @@ fun ProfileScreen(
                 }
             }
         }
-        item {
+        item(key = "notifications") {
             Entrance(delayMs = 150) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsGroup("Notificaciones") {
                         SettingsSwitchRow(
                             icon = if (cardNotifsEnabled) LucideR.drawable.lucide_ic_bell else LucideR.drawable.lucide_ic_bell_off,
-                            title = "Notificaciones",
+                            title = "Vencimiento de tarjetas",
                             subtitle = "Avisa antes del pago de tus tarjetas",
                             checked = cardNotifsEnabled,
                             onCheckedChange = { enable ->
@@ -247,14 +250,17 @@ fun ProfileScreen(
                 }
             }
         }
-        item {
+        item(key = "categories") {
             Entrance(delayMs = 180) {
                 SettingsGroup("Categorías") {
-                    SettingsRow(LucideR.drawable.lucide_ic_tag, "Gestionar categorías") { open(ProfileSheet.Categories) }
+                    SettingsRow(
+                        LucideR.drawable.lucide_ic_tag,
+                        if (state.isViewer) "Ver categorías" else "Gestionar categorías",
+                    ) { open(ProfileSheet.Categories) }
                 }
             }
         }
-        item {
+        item(key = "account") {
             Entrance(delayMs = 240) {
                 SettingsGroup("Cuenta") {
                     SettingsRow(LucideR.drawable.lucide_ic_log_out, "Cerrar sesión", danger = true, chevron = false) {
@@ -263,29 +269,30 @@ fun ProfileScreen(
                 }
             }
         }
-        item {
+        item(key = "version") {
             Entrance(delayMs = 300) {
                 Text(
                     "moni v${BuildConfig.VERSION_NAME}",
                     color = MoniColors.mut,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
     }
 
     when (sheet) {
-        ProfileSheet.Name -> ProfileSheetHost(onDismiss = close, busy = profileState.busy) {
+        ProfileSheet.Name -> MoniBottomSheet(onDismiss = close, busy = profileState.busy) {
             EditNameContent(profileState, initial = name.orEmpty(), onSave = { n -> vm.saveName(n, close) })
         }
-        ProfileSheet.Password -> ProfileSheetHost(onDismiss = close, busy = profileState.busy) {
+        ProfileSheet.Password -> MoniBottomSheet(onDismiss = close, busy = profileState.busy) {
             PasswordContent(profileState, onSave = { p, reset -> vm.changePassword(p, reset) })
         }
-        ProfileSheet.Categories -> ProfileSheetHost(onDismiss = close, busy = state.busy) {
+        ProfileSheet.Categories -> MoniBottomSheet(onDismiss = close, busy = state.busy) {
             CategoriesContent(
                 categories = state.allCategories,
+                isViewer = state.isViewer,
                 busy = state.busy,
                 error = state.sheetError,
                 onClearError = onClearSheetError,
@@ -375,11 +382,7 @@ private fun SettingsSwitchRow(
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
-                .background(MoniColors.iconTile),
-            contentAlignment = Alignment.Center,
-        ) { LucideIcon(icon, null, tint = if (enabled) MoniColors.iconStroke else MoniColors.mut) }
+        IconTile(icon, radius = 12.dp, tint = if (enabled) MoniColors.iconStroke else MoniColors.mut)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -451,44 +454,21 @@ private fun SettingsRow(icon: Int, title: String, danger: Boolean = false, chevr
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
-                .background(if (danger) MoniColors.exp.copy(alpha = 0.10f) else MoniColors.iconTile),
-            contentAlignment = Alignment.Center,
-        ) { LucideIcon(icon, null, tint = if (danger) MoniColors.exp else MoniColors.iconStroke) }
+        IconTile(
+            icon = icon,
+            radius = 12.dp,
+            tint = if (danger) MoniColors.exp else MoniColors.iconStroke,
+            containerColor = if (danger) MoniColors.exp.copy(alpha = 0.10f) else MoniColors.iconTile,
+        )
         Spacer(Modifier.width(14.dp))
         Text(title, color = tone, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         if (chevron) LucideIcon(LucideR.drawable.lucide_ic_chevron_right, null, tint = MoniColors.mut)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ProfileSheetHost(onDismiss: () -> Unit, busy: Boolean, content: @Composable () -> Unit) {
-    ModalBottomSheet(
-        onDismissRequest = { if (!busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MoniColors.card,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) { content() }
-}
-
-@Composable
-internal fun SheetColumn(content: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) { content() }
-}
-
 @Composable
 private fun EditNameContent(state: ProfileState, initial: String, onSave: (String) -> Unit) {
-    var value by remember { mutableStateOf(initial) }
+    var value by rememberSaveable { mutableStateOf(initial) }
     SheetColumn {
         Text("Editar nombre", color = MoniColors.fg, style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
@@ -506,9 +486,11 @@ private fun EditNameContent(state: ProfileState, initial: String, onSave: (Strin
 
 @Composable
 private fun PasswordContent(state: ProfileState, onSave: (String, () -> Unit) -> Unit) {
-    var pass by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    var touched by remember { mutableStateOf(false) }
+    var pass by rememberSaveable { mutableStateOf("") }
+    var confirm by rememberSaveable { mutableStateOf("") }
+    var showPass by rememberSaveable { mutableStateOf(false) }
+    var showConfirm by rememberSaveable { mutableStateOf(false) }
+    var touched by rememberSaveable { mutableStateOf(false) }
     val tooShort = pass.length < 6
     val mismatch = pass != confirm
     val fieldError = when {
@@ -522,14 +504,40 @@ private fun PasswordContent(state: ProfileState, onSave: (String, () -> Unit) ->
         OutlinedTextField(
             value = pass, onValueChange = { pass = it }, label = { Text("Nueva contraseña") },
             singleLine = true, enabled = !state.busy, shape = FieldShape, colors = moniFieldColors(),
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(
+                    onClick = { showPass = !showPass },
+                    modifier = Modifier.focusProperties { canFocus = false },
+                ) {
+                    LucideIcon(
+                        if (showPass) LucideR.drawable.lucide_ic_eye_off else LucideR.drawable.lucide_ic_eye,
+                        if (showPass) "Ocultar contraseña" else "Mostrar contraseña",
+                        tint = MoniColors.mut,
+                        size = 20,
+                    )
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             isError = touched && tooShort, modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
             value = confirm, onValueChange = { confirm = it }, label = { Text("Confirmar contraseña") },
             singleLine = true, enabled = !state.busy, shape = FieldShape, colors = moniFieldColors(),
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (showConfirm) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(
+                    onClick = { showConfirm = !showConfirm },
+                    modifier = Modifier.focusProperties { canFocus = false },
+                ) {
+                    LucideIcon(
+                        if (showConfirm) LucideR.drawable.lucide_ic_eye_off else LucideR.drawable.lucide_ic_eye,
+                        if (showConfirm) "Ocultar contraseña" else "Mostrar contraseña",
+                        tint = MoniColors.mut,
+                        size = 20,
+                    )
+                }
+            },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             isError = touched && !tooShort && mismatch, modifier = Modifier.fillMaxWidth(),
         )

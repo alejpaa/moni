@@ -34,22 +34,36 @@ object MoniColors {
 
 // Static instances generated from the variable font: Android does not reliably
 // apply wght variation settings to resource fonts, so every weight rendered as 400.
-@Composable
-private fun rememberSpaceGrotesk(): FontFamily = FontFamily(
+private val SpaceGroteskFamily = FontFamily(
     Font(R.font.space_grotesk_regular, FontWeight.Normal),
     Font(R.font.space_grotesk_medium, FontWeight.Medium),
     Font(R.font.space_grotesk_semibold, FontWeight.SemiBold),
     Font(R.font.space_grotesk_bold, FontWeight.Bold),
 )
 
-private fun style(family: FontFamily, size: Int, weight: Int, lineHeight: Int, tracking: Float = 0f) =
+private fun style(size: Int, weight: Int, lineHeight: Int, tracking: Float = 0f) =
     TextStyle(
-        fontFamily = family,
+        fontFamily = SpaceGroteskFamily,
         fontSize = size.sp,
         fontWeight = FontWeight(weight),
         lineHeight = lineHeight.sp,
         letterSpacing = tracking.sp,
     )
+
+private val MoniTypography = Typography(
+    displaySmall = style(32, 700, 38, -0.96f),
+    headlineMedium = style(28, 700, 34, -0.56f),
+    headlineSmall = style(22, 700, 28, -0.44f),
+    titleLarge = style(22, 700, 28, -0.44f),
+    titleMedium = style(16, 600, 22),
+    titleSmall = style(14, 600, 20),
+    bodyLarge = style(16, 400, 24),
+    bodyMedium = style(14, 400, 20),
+    bodySmall = style(12, 400, 16),
+    labelLarge = style(14, 600, 20),
+    labelMedium = style(12, 500, 16),
+    labelSmall = style(10, 600, 14, 1.2f),
+)
 
 /** Tabular figures for amounts and dates. */
 val TextStyle.tabular get() = copy(fontFeatureSettings = "tnum")
@@ -76,21 +90,6 @@ private val Scheme = lightColorScheme(
 
 @Composable
 fun MoniTheme(content: @Composable () -> Unit) {
-    val f = rememberSpaceGrotesk()
-    val typography = Typography(
-        displaySmall = style(f, 32, 700, 38, -0.96f),
-        headlineMedium = style(f, 28, 700, 34, -0.56f),
-        headlineSmall = style(f, 22, 700, 28, -0.44f),
-        titleLarge = style(f, 22, 700, 28, -0.44f),
-        titleMedium = style(f, 16, 600, 22),
-        titleSmall = style(f, 14, 600, 20),
-        bodyLarge = style(f, 16, 400, 24),
-        bodyMedium = style(f, 14, 400, 20),
-        bodySmall = style(f, 12, 400, 16),
-        labelLarge = style(f, 14, 600, 20),
-        labelMedium = style(f, 12, 500, 16),
-        labelSmall = style(f, 10, 600, 14, 1.2f),
-    )
     // Light only for now: system dark mode is ignored (docs/design.md).
-    MaterialTheme(colorScheme = Scheme, typography = typography, content = content)
+    MaterialTheme(colorScheme = Scheme, typography = MoniTypography, content = content)
 }

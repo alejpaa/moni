@@ -20,30 +20,23 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +56,7 @@ import androidx.compose.ui.zIndex
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.data.Account
 import com.moni.app.data.Category
+import com.moni.app.data.LIMA_ZONE
 import com.moni.app.ui.theme.MoniColors
 import com.moni.app.ui.theme.tabular
 import java.time.Instant
@@ -85,24 +79,22 @@ private fun nextPeriodDate(base: LocalDate, freq: Frequency): LocalDate = when (
  * "Nuevo movimiento" bottom sheet. [onAdd] follows MoniViewModel.add: its last
  * argument must be invoked on success so the sheet can close.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AddTransactionSheet(
     state: UiState,
     onAdd: (String, Double, String, String?, String?, RecurringInput?, () -> Unit) -> Unit,
+    onRetryCategories: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
-        onDismissRequest = { if (!state.busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MoniColors.card,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-    ) {
+    MoniBottomSheet(onDismiss = onDismiss, busy = state.busy) {
         AddSheetContent(
             busy = state.busy,
             error = state.sheetError,
             categories = state.categories,
+            categoriesLoaded = state.categoriesLoaded,
+            categoriesError = state.categoriesError,
             accounts = state.accounts,
+            onRetryCategories = onRetryCategories,
             onSubmit = { type, amount, categoryId, accountId, note, recurring ->
                 onAdd(type, amount, categoryId, accountId, note, recurring, onDismiss)
             },
@@ -142,7 +134,10 @@ private fun AddSheetContent(
     busy: Boolean,
     error: String?,
     categories: List<Category>,
+    categoriesLoaded: Boolean,
+    categoriesError: String?,
     accounts: List<Account>,
+    onRetryCategories: () -> Unit,
     onSubmit: (String, Double, String, String?, String?, RecurringInput?) -> Unit,
 ) {
     var type by rememberSaveable { mutableStateOf(0) } // 0 = Gasto, 1 = Ingreso
@@ -151,26 +146,28 @@ private fun AddSheetContent(
     var accountPick by rememberSaveable { mutableStateOf<String?>(null) }
     var note by rememberSaveable { mutableStateOf("") }
     var isRecurring by rememberSaveable { mutableStateOf(false) }
+    var recurringAutoSet by rememberSaveable { mutableStateOf(false) }
+    var recurringManuallyToggled by rememberSaveable { mutableStateOf(false) }
     var frequencyIndex by rememberSaveable { mutableStateOf(Frequency.Monthly.ordinal) }
-    var nextDateIso by rememberSaveable { mutableStateOf(nextPeriodDate(LocalDate.now(), Frequency.Monthly).toString()) }
+    var nextDateIso by rememberSaveable { mutableStateOf(nextPeriodDate(LocalDate.now(LIMA_ZONE), Frequency.Monthly).toString()) }
     var dateCustomized by rememberSaveable { mutableStateOf(false) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var submitted by rememberSaveable { mutableStateOf(false) }
 
     val kind = if (type == 1) "income" else "expense"
-    val shown = categories.filter { it.kind == kind }
+    val shown = remember(categories, kind) { categories.filter { it.kind == kind } }
     // Switching Gasto/Ingreso drops a category of the other kind.
     val category = shown.firstOrNull { it.id == categoryId }
     // Default: the first non-archived account (Efectivo is seeded per workspace).
     val accountId = accountPick ?: accounts.firstOrNull { !it.archived }?.id
 
-    val value = amount.replace(',', '.').toDoubleOrNull()
-    val amountError = if (submitted && (value == null || value <= 0)) "Introduce un monto mayor que 0" else null
+    val (value, amountValidationError) = validateAmount(raw = amount)
+    val amountError = if (submitted) amountValidationError else null
     val categoryError = if (submitted && category == null) "Elige una categoría" else null
 
     fun submit() {
         submitted = true
-        if (busy || value == null || value <= 0 || category == null) return
+        if (busy || value == null || category == null) return
         val cleanNote = note.trim().ifBlank { null }
         val recurring = if (isRecurring) {
             RecurringInput(
@@ -182,21 +179,26 @@ private fun AddSheetContent(
         onSubmit(kind, value, category.id, accountId, cleanNote, recurring)
     }
 
-    Column(
-        Modifier
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    SheetColumn {
         Text("Nuevo movimiento", color = MoniColors.fg, style = MaterialTheme.typography.titleLarge)
-        SegmentedControl(listOf("Gasto", "Ingreso"), type, { if (!busy) type = it })
+        SegmentedControl(
+            listOf("Gasto", "Ingreso"),
+            type,
+            { nextType ->
+                if (!busy && nextType != type) {
+                    type = nextType
+                    if (!recurringManuallyToggled && recurringAutoSet) {
+                        isRecurring = false
+                        recurringAutoSet = false
+                    }
+                }
+            },
+        )
         OutlinedTextField(
             value = amount,
             onValueChange = { amount = it },
             label = { Text("Monto") },
+            prefix = { Text("S/ ") },
             singleLine = true,
             enabled = !busy,
             isError = amountError != null,
@@ -210,14 +212,23 @@ private fun AddSheetContent(
         Text("Categoría", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)
         CategoryChips(
             categories = categories,
+            categoriesLoaded = categoriesLoaded,
+            categoriesError = categoriesError,
             income = type == 1,
             selectedId = category?.id,
             enabled = !busy,
+            onRetryCategories = onRetryCategories,
             onSelect = { id ->
                 categoryId = id
-                val picked = shown.firstOrNull { it.id == id }?.name?.let(::normalizeCategory)
-                if (picked == "suscripciones" || picked == "sueldo") {
-                    isRecurring = true
+                if (!recurringManuallyToggled) {
+                    val picked = shown.firstOrNull { it.id == id }?.name?.let(::normalizeCategory)
+                    if (picked == "suscripciones" || picked == "sueldo") {
+                        isRecurring = true
+                        recurringAutoSet = true
+                    } else if (recurringAutoSet) {
+                        isRecurring = false
+                        recurringAutoSet = false
+                    }
                 }
             },
         )
@@ -247,7 +258,11 @@ private fun AddSheetContent(
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
                 .clip(FieldShape)
-                .clickable(enabled = !busy, role = Role.Switch) { isRecurring = !isRecurring }
+                .clickable(enabled = !busy, role = Role.Switch) {
+                    recurringManuallyToggled = true
+                    recurringAutoSet = false
+                    isRecurring = !isRecurring
+                }
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -256,7 +271,13 @@ private fun AddSheetContent(
             Text("Es recurrente", color = MoniColors.fg, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Switch(
                 checked = isRecurring,
-                onCheckedChange = if (busy) null else { { isRecurring = it } },
+                onCheckedChange = if (busy) null else {
+                    { checked ->
+                        recurringManuallyToggled = true
+                        recurringAutoSet = false
+                        isRecurring = checked
+                    }
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = MoniColors.accFg,
                     checkedTrackColor = MoniColors.acc,
@@ -280,7 +301,7 @@ private fun AddSheetContent(
                         if (!busy) {
                             frequencyIndex = idx
                             if (!dateCustomized) {
-                                nextDateIso = nextPeriodDate(LocalDate.now(), Frequency.entries[idx]).toString()
+                                nextDateIso = nextPeriodDate(LocalDate.now(LIMA_ZONE), Frequency.entries[idx]).toString()
                             }
                         }
                     },
@@ -322,7 +343,7 @@ private fun AddSheetContent(
 
     if (showDatePicker) {
         val initialMillis = remember(nextDateIso) {
-            runCatching { LocalDate.parse(nextDateIso) }.getOrElse { LocalDate.now() }
+            runCatching { LocalDate.parse(nextDateIso) }.getOrElse { LocalDate.now(LIMA_ZONE) }
                 .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         }
         val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
@@ -363,39 +384,55 @@ private fun AddSheetContent(
 /**
  * Category chips for both kinds laid out in the same Box, so the block always
  * measures as the taller of the two and the sheet never resizes when toggling
- * Gasto/Ingreso. The inactive kind is transparent, disabled and hidden from
- * accessibility; the two crossfade. While categories load, the block reserves
- * one chip row and shows a placeholder instead of collapsing.
+ * Gasto/Ingreso.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryChips(
     categories: List<Category>,
+    categoriesLoaded: Boolean,
+    categoriesError: String?,
     income: Boolean,
     selectedId: String?,
     enabled: Boolean,
+    onRetryCategories: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
+    val expenseCategories = remember(categories) { categories.filter { it.kind == "expense" } }
+    val incomeCategories = remember(categories) { categories.filter { it.kind == "income" } }
+
     Box(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-        listOf(false, true).forEach { isIncome ->
-            val active = isIncome == income
-            val alpha by animateFloatAsState(if (active) 1f else 0f, tween(200), label = "chipsAlpha")
-            val kind = if (isIncome) "income" else "expense"
-            FlowRow(
-                Modifier
-                    .fillMaxWidth()
-                    // Active set on top so the invisible one never intercepts taps.
-                    .zIndex(if (active) 1f else 0f)
-                    .alpha(alpha)
-                    .then(if (active) Modifier else Modifier.clearAndSetSemantics { }),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                categories.filter { it.kind == kind }.forEach { c ->
-                    ChoiceChip(c.name, categoryIcon(c, isIncome), active && c.id == selectedId, enabled && active) { onSelect(c.id) }
+        if (categories.isNotEmpty()) {
+            listOf(false to expenseCategories, true to incomeCategories).forEach { (isIncome, list) ->
+                val active = isIncome == income
+                val alpha by animateFloatAsState(if (active) 1f else 0f, tween(200), label = "chipsAlpha")
+                FlowRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .zIndex(if (active) 1f else 0f)
+                        .alpha(alpha)
+                        .then(if (active) Modifier else Modifier.clearAndSetSemantics { }),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    list.forEach { c ->
+                        ChoiceChip(c.name, categoryIcon(c, isIncome), active && c.id == selectedId, enabled && active) { onSelect(c.id) }
+                    }
                 }
             }
-        }
-        if (categories.isEmpty()) {
+        } else if (categoriesError != null) {
+            AlertBanner(
+                message = categoriesError,
+                actionLabel = "Reintentar",
+                onAction = onRetryCategories,
+            )
+        } else if (categoriesLoaded) {
+            Text(
+                "No hay categorías activas",
+                color = MoniColors.mut,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+        } else {
             Text(
                 "Cargando categorías…",
                 color = MoniColors.mut,
