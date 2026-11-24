@@ -40,7 +40,6 @@ private const val RELOCK_BACKGROUND_MS = 30_000L
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Prefs.init(this)
         // Always light for now: dark icons on transparent system bars.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),

@@ -61,8 +61,8 @@ import kotlinx.coroutines.delay
 
 private enum class Filter(val label: String) { All("Todo"), Income("Ingresos"), Expense("Gastos") }
 
-/** Remembers which ids existed at first load so later arrivals can be highlighted. */
-private class RowTracker {
+/** Remembers which ids existed at first load so later arrivals can be highlighted without replaying on tab switches. */
+class RowTracker {
     var baseline: Set<String>? = null
     val newIds = mutableSetOf<String>()
     val animated = mutableSetOf<String>()
@@ -76,6 +76,12 @@ private class RowTracker {
             baseline = b + ids
         }
     }
+
+    fun reset() {
+        baseline = null
+        newIds.clear()
+        animated.clear()
+    }
 }
 
 /** "Movimientos" tab: filters, pending-review entry and the transaction list. */
@@ -83,12 +89,12 @@ private class RowTracker {
 fun TransactionsScreen(
     state: UiState,
     contentPadding: PaddingValues,
+    tracker: RowTracker,
     onDelete: (String) -> Unit,
     onOpenReview: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(Filter.All) }
-    val categoriesById = remember(state.categories) { state.categories.associateBy { it.id } }
-    val tracker = remember { RowTracker() }
+    val categoriesById = remember(state.allCategories) { state.allCategories.associateBy { it.id } }
     remember(state.transactions, state.loaded) { tracker.update(state.transactions.map { it.id }, state.loaded) }
 
     val visible = when (filter) {

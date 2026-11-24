@@ -36,10 +36,12 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,14 +75,22 @@ fun Modifier.pressScale(source: InteractionSource): Modifier {
     return graphicsLayer { scaleX = scale; scaleY = scale }
 }
 
+/** Controls whether [Entrance] plays its entry animation (false when returning to an already-visited tab). */
+val LocalAnimateEntrance = compositionLocalOf { true }
+
 /** Fade + rise + scale entrance, staggered with [delayMs]. */
 @Composable
 fun Entrance(
     modifier: Modifier = Modifier,
     delayMs: Int = 0,
     initialScale: Float = 0.96f,
+    animate: Boolean = LocalAnimateEntrance.current,
     content: @Composable () -> Unit,
 ) {
+    if (!animate) {
+        Box(modifier) { content() }
+        return
+    }
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
     AnimatedVisibility(
@@ -90,6 +100,16 @@ fun Entrance(
             slideInVertically(tween(520, delayMs)) { it / 6 } +
             scaleIn(tween(520, delayMs), initialScale = initialScale),
     ) { content() }
+}
+
+/** Calm static placeholder bar for loading states (no looping shimmer per docs/design.md). */
+@Composable
+internal fun SkeletonBox(
+    modifier: Modifier = Modifier,
+    color: Color = MoniColors.track,
+    radius: Dp = 8.dp,
+) {
+    Box(modifier.clip(RoundedCornerShape(radius)).background(color))
 }
 
 @Composable

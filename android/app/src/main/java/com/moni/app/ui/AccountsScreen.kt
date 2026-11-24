@@ -32,8 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,10 +45,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.data.Account
-import com.moni.app.data.Transaction
+import com.moni.app.data.AccountInput
+import com.moni.app.data.computeBalanceTotals
 import com.moni.app.ui.theme.MoniColors
 import com.moni.app.ui.theme.tabular
 
@@ -84,27 +82,24 @@ private sealed interface FormTarget {
 }
 
 /**
- * "Cuentas" tab. [transactions] are the confirmed ones; balances are reloaded when they change.
- * [onAccountsChanged] fires after every create/edit/archive/restore so the add sheet sees the new list.
+ * "Cuentas" tab. Reads exclusively from the shared [state] store; switching tabs causes zero
+ * network calls. Only account mutations update the accounts/balances slices.
  */
 @Composable
 fun AccountsScreen(
-    transactions: List<Transaction>,
+    state: UiState,
     contentPadding: PaddingValues,
-    onAccountsChanged: () -> Unit,
+    onClearError: () -> Unit,
+    onSave: (id: String?, input: AccountInput, onDone: () -> Unit) -> Unit,
+    onSetArchived: (id: String, archived: Boolean, fromSheet: Boolean, onDone: () -> Unit) -> Unit,
 ) {
-    val vm: AccountsViewModel = viewModel()
-    val state by vm.state.collectAsState()
-    LaunchedEffect(transactions) { vm.reload() }
-
     var form by remember { mutableStateOf<FormTarget?>(null) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
 
-    val active = state.accounts.filter { !it.archived }
-    val archived = state.accounts.filter { it.archived }
-    val available = active.filter { it.type != "credit_card" }.sumOf { state.balances[it.id] ?: 0.0 }
-    val cardDebt = active.filter { it.type == "credit_card" }.sumOf { state.balances[it.id] ?: 0.0 }
-    val hasCards = active.any { it.type == "credit_card" }
+    val active = remember(state.allAccounts) { state.allAccounts.filter { !it.archived } }
+    val archived = remember(state.allAccounts) { state.allAccounts.filter { it.archived } }
+    val ready = state.accountsLoaded && state.balancesLoaded
+    val totals = remember(state.allAccounts, state.balances) { computeBalanceTotals(state.allAccounts, state.balances) }
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -126,32 +121,42 @@ fun AccountsScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text("Disponible", color = MoniColors.heroFg, style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        formatSoles(available, availReveal.effectiveHidden),
-                        color = Color.White,
-                        style = MaterialTheme.typography.headlineMedium.tabular,
-                        modifier = Modifier.revealOnTap(availReveal),
-                    )
-                    if (hasCards) {
-                        Spacer(Modifier.height(6.dp))
-                        Text("Deuda de tarjetas", color = MoniColors.heroFg, style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            formatSoles(cardDebt, debtReveal.effectiveHidden),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium.tabular,
-                            modifier = Modifier.revealOnTap(debtReveal),
+                    if (!ready) {
+                        SkeletonBox(
+                            Modifier.width(156.dp).height(32.dp),
+                            color = MoniColors.heroFg.copy(alpha = 0.16f),
+                            radius = 8.dp,
                         )
+                    } else {
+                        Text(
+                            formatSoles(totals.disponible, availReveal.effectiveHidden),
+                            color = Color.White,
+                            style = MaterialTheme.typography.headlineMedium.tabular,
+                            modifier = Modifier.revealOnTap(availReveal),
+                        )
+                        if (totals.hasCards) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Deuda de tarjetas", color = MoniColors.heroFg, style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                formatSoles(totals.cardDebt, debtReveal.effectiveHidden),
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium.tabular,
+                                modifier = Modifier.revealOnTap(debtReveal),
+                            )
+                        }
                     }
                 }
             }
         }
         item {
             Entrance(delayMs = 100) {
-                PrimaryButton("Nueva cuenta", onClick = { vm.clearError(); form = FormTarget.New }, icon = LucideR.drawable.lucide_ic_plus)
+                PrimaryButton("Nueva cuenta", onClick = { onClearError(); form = FormTarget.New }, icon = LucideR.drawable.lucide_ic_plus)
             }
         }
         if (state.error != null && form == null) item { AlertBanner(state.error) }
-        if (state.loaded && active.isEmpty()) {
+        if (!ready) {
+            items(2) { AccountSkeletonCard() }
+        } else if (active.isEmpty()) {
             item {
                 Text(
                     "Aún no tienes cuentas. Crea la primera para empezar.",
@@ -159,11 +164,12 @@ fun AccountsScreen(
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
             }
+        } else {
+            items(active, key = { it.id }) { a ->
+                AccountCard(a, state.balances[a.id] ?: a.openingBalance) { onClearError(); form = FormTarget.Edit(a) }
+            }
         }
-        items(active, key = { it.id }) { a ->
-            AccountCard(a, state.balances[a.id] ?: a.openingBalance) { vm.clearError(); form = FormTarget.Edit(a) }
-        }
-        if (archived.isNotEmpty()) {
+        if (ready && archived.isNotEmpty()) {
             item(key = "archived-header") {
                 val rotation by animateFloatAsState(if (showArchived) 180f else 0f, moniSpring(), label = "chev")
                 Row(
@@ -184,7 +190,7 @@ fun AccountsScreen(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         archived.forEach { a ->
-                            ArchivedRow(a, enabled = !state.busy) { vm.setArchived(a.id, false, onAccountsChanged) }
+                            ArchivedRow(a, enabled = !state.busy) { onSetArchived(a.id, false, false) {} }
                         }
                     }
                 }
@@ -197,11 +203,33 @@ fun AccountsScreen(
         AccountFormSheet(
             account = account,
             busy = state.busy,
-            error = state.error,
-            onSave = { input -> vm.save(account?.id, input) { form = null; onAccountsChanged() } },
-            onArchive = { account?.let { vm.setArchived(it.id, true) { form = null; onAccountsChanged() } } },
-            onDismiss = { form = null },
+            error = state.sheetError,
+            onSave = { input -> onSave(account?.id, input) { form = null } },
+            onArchive = { account?.let { onSetArchived(it.id, true, true) { form = null } } },
+            onDismiss = { form = null; onClearError() },
         )
+    }
+}
+
+@Composable
+private fun AccountSkeletonCard() {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .shadow(2.dp, shape, ambientColor = Color(0x14000000), spotColor = Color(0x14000000))
+            .clip(shape)
+            .background(MoniColors.card)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SkeletonBox(Modifier.size(44.dp), radius = 14.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            SkeletonBox(Modifier.width(110.dp).height(15.dp), radius = 6.dp)
+            SkeletonBox(Modifier.width(72.dp).height(12.dp), radius = 6.dp)
+        }
+        SkeletonBox(Modifier.width(74.dp).height(16.dp), radius = 6.dp)
     }
 }
 

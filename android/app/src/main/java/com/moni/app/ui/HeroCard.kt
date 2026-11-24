@@ -1,7 +1,7 @@
 package com.moni.app.ui
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOutCubic
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -34,27 +34,30 @@ import com.composables.icons.lucide.R as LucideR
 import com.moni.app.data.Prefs
 import com.moni.app.ui.theme.MoniColors
 import com.moni.app.ui.theme.tabular
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
-/** Balance card: counts up over ~900ms on first load, 500ms on later changes. */
+/**
+ * Balance card: shows a calm skeleton while [loaded] is false, counts up over ~900ms on the
+ * first load of the session ([animateInitial]), and animates changes over 500ms thereafter.
+ */
 @Composable
-internal fun HeroCard(balance: Double, income: Double, expense: Double, loaded: Boolean, month: String) {
+internal fun HeroCard(
+    balance: Double,
+    income: Double,
+    expense: Double,
+    loaded: Boolean,
+    month: String,
+    animateInitial: Boolean,
+    onInitialAnimated: () -> Unit,
+) {
     val hideAmounts = LocalHideAmounts.current
     val balanceReveal = rememberRevealState(hideAmounts)
     val incomeReveal = rememberRevealState(hideAmounts)
     val expenseReveal = rememberRevealState(hideAmounts)
-
-    var settled by remember { mutableStateOf(false) }
-    LaunchedEffect(loaded) { if (loaded) { delay(1000); settled = true } }
-    val shown by animateFloatAsState(
-        targetValue = balance.toFloat(),
-        animationSpec = tween(if (settled) 500 else 900, easing = EaseOutCubic),
-        label = "balance",
-    )
-    val shownIncome by animateFloatAsState(income.toFloat(), tween(if (settled) 500 else 900, easing = EaseOutCubic), label = "inc")
-    val shownExpense by animateFloatAsState(expense.toFloat(), tween(if (settled) 500 else 900, easing = EaseOutCubic), label = "exp")
-
     val shape = RoundedCornerShape(22.dp)
+    val skeletonTint = MoniColors.heroFg.copy(alpha = 0.16f)
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -86,28 +89,55 @@ internal fun HeroCard(balance: Double, income: Double, expense: Double, loaded: 
             }
         }
         Spacer(Modifier.height(2.dp))
-        Text(
-            formatMoney(shown.toDouble(), balanceReveal.effectiveHidden),
-            color = MoniColors.heroFg,
-            style = MaterialTheme.typography.displaySmall.tabular,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.revealOnTap(balanceReveal),
-        )
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            HeroStat(
-                LucideR.drawable.lucide_ic_arrow_up,
-                "Ingresos",
-                formatMoney(shownIncome.toDouble(), incomeReveal.effectiveHidden),
-                incomeReveal,
+        if (!loaded) {
+            SkeletonBox(Modifier.width(172.dp).height(38.dp), color = skeletonTint, radius = 10.dp)
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                SkeletonBox(Modifier.width(88.dp).height(20.dp), color = skeletonTint, radius = 6.dp)
+                SkeletonBox(Modifier.width(88.dp).height(20.dp), color = skeletonTint, radius = 6.dp)
+            }
+        } else {
+            val shown = remember { Animatable(if (animateInitial) 0f else balance.toFloat()) }
+            val shownIncome = remember { Animatable(if (animateInitial) 0f else income.toFloat()) }
+            val shownExpense = remember { Animatable(if (animateInitial) 0f else expense.toFloat()) }
+            var initialDone by remember { mutableStateOf(!animateInitial) }
+
+            LaunchedEffect(balance, income, expense) {
+                val duration = if (!initialDone) 900 else 500
+                coroutineScope {
+                    launch { shown.animateTo(balance.toFloat(), tween(duration, easing = EaseOutCubic)) }
+                    launch { shownIncome.animateTo(income.toFloat(), tween(duration, easing = EaseOutCubic)) }
+                    launch { shownExpense.animateTo(expense.toFloat(), tween(duration, easing = EaseOutCubic)) }
+                }
+                if (!initialDone) {
+                    initialDone = true
+                    onInitialAnimated()
+                }
+            }
+
+            Text(
+                formatMoney(shown.value.toDouble(), balanceReveal.effectiveHidden),
+                color = MoniColors.heroFg,
+                style = MaterialTheme.typography.displaySmall.tabular,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.revealOnTap(balanceReveal),
             )
-            HeroStat(
-                LucideR.drawable.lucide_ic_arrow_down,
-                "Gastos",
-                formatMoney(shownExpense.toDouble(), expenseReveal.effectiveHidden),
-                expenseReveal,
-            )
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                HeroStat(
+                    LucideR.drawable.lucide_ic_arrow_up,
+                    "Ingresos",
+                    formatMoney(shownIncome.value.toDouble(), incomeReveal.effectiveHidden),
+                    incomeReveal,
+                )
+                HeroStat(
+                    LucideR.drawable.lucide_ic_arrow_down,
+                    "Gastos",
+                    formatMoney(shownExpense.value.toDouble(), expenseReveal.effectiveHidden),
+                    expenseReveal,
+                )
+            }
         }
     }
 }

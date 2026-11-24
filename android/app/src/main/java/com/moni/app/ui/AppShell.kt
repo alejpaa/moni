@@ -37,12 +37,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,11 +100,50 @@ fun AppShell(state: UiState, vm: MoniViewModel) {
             },
             label = "tab",
         ) { current ->
-            when (current) {
-                Tab.Home -> DashboardScreen(state, contentPadding, onSeeAll = { tab = Tab.Transactions }, onOpenReview = openReview)
-                Tab.Transactions -> TransactionsScreen(state, contentPadding, onDelete = vm::delete, onOpenReview = openReview)
-                Tab.Accounts -> AccountsScreen(state.transactions, contentPadding, onAccountsChanged = vm::refresh)
-                Tab.Profile -> ProfileScreen(state.email, contentPadding, onSignOut = vm::signOut, onCategoriesChanged = vm::refresh)
+            val animateEntrance = remember(current) { vm.shouldAnimateEntrance(current.name) }
+            LaunchedEffect(current) {
+                delay(850)
+                vm.markTabEntered(current.name)
+            }
+            DisposableEffect(current) {
+                onDispose { vm.markTabEntered(current.name) }
+            }
+            CompositionLocalProvider(LocalAnimateEntrance provides animateEntrance) {
+                when (current) {
+                    Tab.Home -> DashboardScreen(
+                        state = state,
+                        contentPadding = contentPadding,
+                        shouldAnimateHero = vm::shouldAnimateHero,
+                        onHeroAnimated = vm::markHeroAnimated,
+                        shouldAnimateBars = vm::shouldAnimateDashboardBars,
+                        onBarsAnimated = vm::markDashboardBarsAnimated,
+                        onSeeAll = { tab = Tab.Transactions },
+                        onOpenReview = openReview,
+                    )
+                    Tab.Transactions -> TransactionsScreen(
+                        state = state,
+                        contentPadding = contentPadding,
+                        tracker = vm.rowTracker,
+                        onDelete = vm::delete,
+                        onOpenReview = openReview,
+                    )
+                    Tab.Accounts -> AccountsScreen(
+                        state = state,
+                        contentPadding = contentPadding,
+                        onClearError = vm::clearError,
+                        onSave = vm::saveAccount,
+                        onSetArchived = vm::setAccountArchived,
+                    )
+                    Tab.Profile -> ProfileScreen(
+                        state = state,
+                        contentPadding = contentPadding,
+                        onSignOut = vm::signOut,
+                        onClearSheetError = vm::clearError,
+                        onCreateCategory = vm::createCategory,
+                        onUpdateCategory = vm::updateCategory,
+                        onSetCategoryArchived = vm::setCategoryArchived,
+                    )
+                }
             }
         }
 

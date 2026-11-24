@@ -100,7 +100,7 @@ internal fun AddTransactionSheet(
     ) {
         AddSheetContent(
             busy = state.busy,
-            error = state.error,
+            error = state.sheetError,
             categories = state.categories,
             accounts = state.accounts,
             onSubmit = { type, amount, categoryId, accountId, note, recurring ->

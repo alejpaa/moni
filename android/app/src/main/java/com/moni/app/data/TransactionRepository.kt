@@ -3,7 +3,6 @@ package com.moni.app.data
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -40,21 +39,6 @@ class TransactionRepository {
             limit(max)
         }.decodeList()
 
-    suspend fun categories(): List<Category> =
-        supabase.from("categories").select(Columns.list("id", "name", "kind", "icon", "archived")) {
-            filter { eq("archived", false) }
-            order("name", Order.ASCENDING)
-        }.decodeList()
-
-    suspend fun accounts(): List<Account> =
-        supabase.from("accounts").select(Columns.list(
-            "id", "name", "type", "opening_balance", "institution", "last4", "color",
-            "credit_limit", "closing_day", "due_day", "archived",
-        )) {
-            filter { eq("archived", false) }
-            order("created_at", Order.ASCENDING)
-        }.decodeList()
-
     suspend fun add(
         type: String,
         amount: Double,
@@ -62,19 +46,23 @@ class TransactionRepository {
         accountId: String?,
         note: String?,
         reminderId: String? = null,
-    ) {
-        table.insert(NewTransaction(type, round2(amount), categoryId, accountId, note, reminderId = reminderId))
-    }
+    ): Transaction =
+        table.insert(NewTransaction(type, round2(amount), categoryId, accountId, note, reminderId = reminderId)) {
+            select()
+        }.decodeSingle()
 
     /** Confirms or ignores a pending row, optionally reassigning category/account. */
-    suspend fun review(id: String, status: String, categoryId: String? = null, accountId: String? = null) {
+    suspend fun review(id: String, status: String, categoryId: String? = null, accountId: String? = null): Transaction {
         // Built by hand so unchanged fields are never sent (a null would clear the column).
         val patch = buildJsonObject {
             put("status", status)
             categoryId?.let { put("category_id", it) }
             accountId?.let { put("account_id", it) }
         }
-        table.update(patch) { filter { eq("id", id) } }
+        return table.update(patch) {
+            filter { eq("id", id) }
+            select()
+        }.decodeSingle()
     }
 
     suspend fun delete(id: String) {

@@ -43,7 +43,15 @@ private data class Editing(val category: Category?)
 
 /** Body of the "Gestionar categorías" sheet: list <-> form, inside the same sheet. */
 @Composable
-internal fun CategoriesContent(state: ProfileState, vm: ProfileViewModel, onChanged: () -> Unit) {
+internal fun CategoriesContent(
+    categories: List<Category>,
+    busy: Boolean,
+    error: String?,
+    onClearError: () -> Unit,
+    onCreate: (name: String, kind: String, icon: String, onDone: () -> Unit) -> Unit,
+    onUpdate: (id: String, name: String, icon: String, onDone: () -> Unit) -> Unit,
+    onSetArchived: (id: String, archived: Boolean, onDone: () -> Unit) -> Unit,
+) {
     var kindIdx by rememberSaveable { mutableStateOf(0) }
     var editing by remember { mutableStateOf<Editing?>(null) }
     val kind = if (kindIdx == 0) "expense" else "income"
@@ -51,32 +59,37 @@ internal fun CategoriesContent(state: ProfileState, vm: ProfileViewModel, onChan
     val target = editing
     if (target == null) {
         CategoryList(
-            state = state,
+            categories = categories,
+            busy = busy,
+            error = error,
             kindIdx = kindIdx,
             onKind = { kindIdx = it },
-            onNew = { vm.clearMessages(); editing = Editing(null) },
-            onEdit = { vm.clearMessages(); editing = Editing(it) },
-            onRestore = { c -> vm.setArchived(c.id, false, {}, onChanged) },
+            onNew = { onClearError(); editing = Editing(null) },
+            onEdit = { onClearError(); editing = Editing(it) },
+            onRestore = { c -> onSetArchived(c.id, false) {} },
         )
     } else {
         CategoryForm(
-            state = state,
+            busy = busy,
+            error = error,
             category = target.category,
             initialKind = kind,
-            onBack = { vm.clearMessages(); editing = null },
+            onBack = { onClearError(); editing = null },
             onSave = { name, k, icon ->
                 val c = target.category
-                if (c == null) vm.createCategory(name, k, icon, { editing = null }, onChanged)
-                else vm.updateCategory(c.id, name, icon, { editing = null }, onChanged)
+                if (c == null) onCreate(name, k, icon) { editing = null }
+                else onUpdate(c.id, name, icon) { editing = null }
             },
-            onArchive = { c -> vm.setArchived(c.id, true, { editing = null }, onChanged) },
+            onArchive = { c -> onSetArchived(c.id, true) { editing = null } },
         )
     }
 }
 
 @Composable
 private fun CategoryList(
-    state: ProfileState,
+    categories: List<Category>,
+    busy: Boolean,
+    error: String?,
     kindIdx: Int,
     onKind: (Int) -> Unit,
     onNew: () -> Unit,
@@ -85,12 +98,12 @@ private fun CategoryList(
 ) {
     val kind = if (kindIdx == 0) "expense" else "income"
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    val active = state.categories.filter { it.kind == kind && !it.archived }
-    val archived = state.categories.filter { it.kind == kind && it.archived }
+    val active = categories.filter { it.kind == kind && !it.archived }
+    val archived = categories.filter { it.kind == kind && it.archived }
     SheetColumn {
         Text("Categorías", color = MoniColors.fg, style = MaterialTheme.typography.titleMedium)
         SegmentedControl(listOf("Gasto", "Ingreso"), kindIdx, onKind)
-        AlertBanner(state.error)
+        AlertBanner(error)
         Column(Modifier.fillMaxWidth().heightIn(min = 320.dp)) {
             if (active.isEmpty()) {
                 Text(
@@ -114,7 +127,7 @@ private fun CategoryList(
                     Column {
                         archived.forEach { c ->
                             CategoryRow(c, onClick = null, dim = true) {
-                                TextButton(onClick = { onRestore(c) }, enabled = !state.busy) {
+                                TextButton(onClick = { onRestore(c) }, enabled = !busy) {
                                     Text("Restaurar", color = MoniColors.iconStroke)
                                 }
                             }
@@ -156,7 +169,8 @@ private fun IconTile(res: Int, dim: Boolean = false) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CategoryForm(
-    state: ProfileState,
+    busy: Boolean,
+    error: String?,
     category: Category?,
     initialKind: String,
     onBack: () -> Unit,
@@ -180,11 +194,11 @@ private fun CategoryForm(
                 if (isNew) "Nueva categoría" else "Editar categoría", color = MoniColors.fg,
                 style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onBack, enabled = !state.busy) { Text("Volver", color = MoniColors.iconStroke) }
+            TextButton(onClick = onBack, enabled = !busy) { Text("Volver", color = MoniColors.iconStroke) }
         }
         OutlinedTextField(
             value = name, onValueChange = { name = it }, label = { Text("Nombre") },
-            singleLine = true, enabled = !state.busy, shape = FieldShape, colors = moniFieldColors(),
+            singleLine = true, enabled = !busy, shape = FieldShape, colors = moniFieldColors(),
             modifier = Modifier.fillMaxWidth(),
         )
         if (isNew) {
@@ -202,20 +216,20 @@ private fun CategoryForm(
                         .pressScale(source)
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (selected) MoniColors.acc else MoniColors.iconTile)
-                        .selectable(selected = selected, enabled = !state.busy, interactionSource = source, indication = null, role = Role.RadioButton) { icon = key },
+                        .selectable(selected = selected, enabled = !busy, interactionSource = source, indication = null, role = Role.RadioButton) { icon = key },
                     contentAlignment = Alignment.Center,
                 ) { LucideIcon(res, key, tint = if (selected) MoniColors.accFg else MoniColors.iconStroke, size = 22) }
             }
         }
-        AlertBanner(state.error)
+        AlertBanner(error)
         PrimaryButton(
-            if (state.busy) "Guardando…" else "Guardar",
+            if (busy) "Guardando…" else "Guardar",
             onClick = { onSave(name, kind, icon) },
-            enabled = !state.busy && name.isNotBlank(), loading = state.busy,
+            enabled = !busy && name.isNotBlank(), loading = busy,
         )
         if (category != null) {
             TextButton(
-                onClick = { confirmArchive = true }, enabled = !state.busy,
+                onClick = { confirmArchive = true }, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
                 LucideIcon(LucideR.drawable.lucide_ic_archive, null, tint = MoniColors.exp, size = 16)

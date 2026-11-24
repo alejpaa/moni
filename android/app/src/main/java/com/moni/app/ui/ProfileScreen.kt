@@ -80,27 +80,29 @@ import com.moni.app.ui.theme.MoniColors
 private enum class ProfileSheet { Name, Password, Categories }
 
 /**
- * "Perfil" tab. Call [onCategoriesChanged] after editing categories so
- * MoniViewModel.refresh() reloads the list the add sheet uses.
+ * "Perfil" tab. Reads categories from the shared [state] store and only loads the profile once per session.
  */
 @Composable
 fun ProfileScreen(
-    email: String?,
+    state: UiState,
     contentPadding: PaddingValues,
     onSignOut: () -> Unit,
-    onCategoriesChanged: () -> Unit,
+    onClearSheetError: () -> Unit,
+    onCreateCategory: (name: String, kind: String, icon: String, onDone: () -> Unit) -> Unit,
+    onUpdateCategory: (id: String, name: String, icon: String, onDone: () -> Unit) -> Unit,
+    onSetCategoryArchived: (id: String, archived: Boolean, onDone: () -> Unit) -> Unit,
 ) {
     val vm: ProfileViewModel = viewModel()
-    val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { vm.loadOnce() }
+    val profileState by vm.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.sessionKey) { vm.loadOnce(state.sessionKey) }
 
     var sheet by remember { mutableStateOf<ProfileSheet?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
-    val close = { sheet = null; vm.clearMessages() }
-    val open = { s: ProfileSheet -> vm.clearMessages(); sheet = s }
+    val close = { sheet = null; vm.clearMessages(); onClearSheetError() }
+    val open = { s: ProfileSheet -> vm.clearMessages(); onClearSheetError(); sheet = s }
 
-    val name = state.profile?.fullName?.takeIf { it.isNotBlank() }
-    val shownEmail = email ?: state.profile?.email
+    val name = profileState.profile?.fullName?.takeIf { it.isNotBlank() }
+    val shownEmail = state.email ?: profileState.profile?.email
     val hideAmounts = LocalHideAmounts.current
     val appLockEnabled by Prefs.appLockEnabled.collectAsStateWithLifecycle()
     val cardNotifsEnabled by Prefs.cardNotificationsEnabled.collectAsStateWithLifecycle()
@@ -275,14 +277,22 @@ fun ProfileScreen(
     }
 
     when (sheet) {
-        ProfileSheet.Name -> ProfileSheetHost(onDismiss = close, busy = state.busy) {
-            EditNameContent(state, initial = name.orEmpty(), onSave = { n -> vm.saveName(n, close) })
+        ProfileSheet.Name -> ProfileSheetHost(onDismiss = close, busy = profileState.busy) {
+            EditNameContent(profileState, initial = name.orEmpty(), onSave = { n -> vm.saveName(n, close) })
         }
-        ProfileSheet.Password -> ProfileSheetHost(onDismiss = close, busy = state.busy) {
-            PasswordContent(state, onSave = { p, reset -> vm.changePassword(p, reset) })
+        ProfileSheet.Password -> ProfileSheetHost(onDismiss = close, busy = profileState.busy) {
+            PasswordContent(profileState, onSave = { p, reset -> vm.changePassword(p, reset) })
         }
         ProfileSheet.Categories -> ProfileSheetHost(onDismiss = close, busy = state.busy) {
-            CategoriesContent(state, vm, onCategoriesChanged)
+            CategoriesContent(
+                categories = state.allCategories,
+                busy = state.busy,
+                error = state.sheetError,
+                onClearError = onClearSheetError,
+                onCreate = onCreateCategory,
+                onUpdate = onUpdateCategory,
+                onSetArchived = onSetCategoryArchived,
+            )
         }
         null -> Unit
     }

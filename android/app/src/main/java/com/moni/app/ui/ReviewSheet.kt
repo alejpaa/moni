@@ -93,7 +93,7 @@ internal fun ReviewSheet(
         containerColor = MoniColors.card,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
     ) {
-        ReviewContent(state.pending, state.categories, state.accounts, state.error, onConfirm, onIgnore)
+        ReviewContent(state.pending, state.categories, state.accounts, state.sheetError, onConfirm, onIgnore)
     }
 }
 

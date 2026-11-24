@@ -35,6 +35,32 @@ private data class BalanceRow(
 /** Money is numeric(12,2): keep two decimals and drop floating-point noise. */
 fun round2(v: Double): Double = round(v * 100.0) / 100.0
 
+private val excludedFromDisponible = setOf("savings", "investment", "credit_card")
+
+data class BalanceTotals(
+    val disponible: Double,
+    val cardDebt: Double,
+    val hasCards: Boolean,
+)
+
+/**
+ * Computes Disponible and total credit-card debt from active (non-archived) accounts:
+ * Disponible = sum(balances of non-savings, non-investment, non-credit_card) - sum(credit_card debt).
+ */
+fun computeBalanceTotals(accounts: List<Account>, balances: Map<String, Double>): BalanceTotals {
+    val active = accounts.filter { !it.archived }
+    val liquid = active
+        .filter { it.type !in excludedFromDisponible }
+        .sumOf { balances[it.id] ?: it.openingBalance }
+    val cards = active.filter { it.type == "credit_card" }
+    val cardDebt = cards.sumOf { balances[it.id] ?: it.openingBalance }
+    return BalanceTotals(
+        disponible = round2(liquid - cardDebt),
+        cardDebt = round2(cardDebt),
+        hasCards = cards.isNotEmpty(),
+    )
+}
+
 class AccountRepository {
     private val table get() = supabase.from("accounts")
 
