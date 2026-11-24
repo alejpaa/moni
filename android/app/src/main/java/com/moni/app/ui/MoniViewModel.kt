@@ -169,6 +169,7 @@ class MoniViewModel(
                                     loading = false,
                                     email = email,
                                     sessionRefreshFailed = false,
+                                    error = if (s.sessionRefreshFailed) null else s.error,
                                     notice = null,
                                 )
                             }
