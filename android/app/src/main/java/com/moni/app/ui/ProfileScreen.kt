@@ -1,11 +1,22 @@
 package com.moni.app.ui
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,11 +36,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -50,10 +65,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.composables.icons.lucide.R as LucideR
 import com.moni.app.BuildConfig
+import com.moni.app.data.CardDueNotifications
+import com.moni.app.data.CardDueScheduler
+import com.moni.app.data.Prefs
 import com.moni.app.ui.theme.MoniColors
 
 private enum class ProfileSheet { Name, Password, Categories }
@@ -80,6 +101,44 @@ fun ProfileScreen(
 
     val name = state.profile?.fullName?.takeIf { it.isNotBlank() }
     val shownEmail = email ?: state.profile?.email
+    val hideAmounts = LocalHideAmounts.current
+    val appLockEnabled by Prefs.appLockEnabled.collectAsStateWithLifecycle()
+    val cardNotifsEnabled by Prefs.cardNotificationsEnabled.collectAsStateWithLifecycle()
+    val cardNotifyDays by Prefs.cardNotifyDaysBefore.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val activity = remember(context) { context.findFragmentActivity() }
+    var bioStatus by remember { mutableStateOf(biometricStatus(context)) }
+    var lockError by remember { mutableStateOf<String?>(null) }
+    var notifError by remember { mutableStateOf<String?>(null) }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            Prefs.setCardNotificationsEnabled(true)
+            CardDueScheduler.sync(context, true)
+            notifError = null
+        } else {
+            Prefs.setCardNotificationsEnabled(false)
+            CardDueScheduler.sync(context, false)
+            notifError = "Activa el permiso de notificaciones en Ajustes para recibir avisos"
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                bioStatus = biometricStatus(context)
+                if (Prefs.cardNotificationsEnabled.value && !CardDueNotifications.hasPermission(context)) {
+                    Prefs.setCardNotificationsEnabled(false)
+                    CardDueScheduler.sync(context, false)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -97,9 +156,92 @@ fun ProfileScreen(
             }
         }
         item {
+            Entrance(delayMs = 100) {
+                SettingsGroup("Privacidad") {
+                    SettingsSwitchRow(
+                        icon = if (hideAmounts) LucideR.drawable.lucide_ic_eye_off else LucideR.drawable.lucide_ic_eye,
+                        title = "Ocultar montos",
+                        subtitle = "Muestra S/ •••• en saldos y movimientos",
+                        checked = hideAmounts,
+                        onCheckedChange = { Prefs.setHideAmounts(it) },
+                    )
+                }
+            }
+        }
+        item {
             Entrance(delayMs = 120) {
-                SettingsGroup("Seguridad") {
-                    SettingsRow(LucideR.drawable.lucide_ic_lock, "Cambiar contraseña") { open(ProfileSheet.Password) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsGroup("Seguridad") {
+                        SettingsSwitchRow(
+                            icon = LucideR.drawable.lucide_ic_fingerprint_pattern,
+                            title = "Bloqueo con biometría",
+                            subtitle = if (bioStatus.available) "Pide huella o bloqueo al abrir moni" else bioStatus.reason,
+                            checked = appLockEnabled && bioStatus.available,
+                            enabled = bioStatus.available,
+                            onCheckedChange = { enable ->
+                                lockError = null
+                                if (!enable) {
+                                    Prefs.setAppLockEnabled(false)
+                                } else if (activity != null) {
+                                    promptBiometric(
+                                        activity = activity,
+                                        title = "Activar bloqueo",
+                                        subtitle = "Confirma tu identidad para proteger moni",
+                                        onSuccess = { Prefs.setAppLockEnabled(true) },
+                                        onError = { msg -> lockError = msg },
+                                    )
+                                }
+                            },
+                        )
+                        HorizontalDivider(color = MoniColors.divider, modifier = Modifier.padding(start = 66.dp))
+                        SettingsRow(LucideR.drawable.lucide_ic_lock, "Cambiar contraseña") { open(ProfileSheet.Password) }
+                    }
+                    AlertBanner(lockError)
+                }
+            }
+        }
+        item {
+            Entrance(delayMs = 150) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsGroup("Notificaciones") {
+                        SettingsSwitchRow(
+                            icon = if (cardNotifsEnabled) LucideR.drawable.lucide_ic_bell else LucideR.drawable.lucide_ic_bell_off,
+                            title = "Notificaciones",
+                            subtitle = "Avisa antes del pago de tus tarjetas",
+                            checked = cardNotifsEnabled,
+                            onCheckedChange = { enable ->
+                                notifError = null
+                                if (!enable) {
+                                    Prefs.setCardNotificationsEnabled(false)
+                                    CardDueScheduler.sync(context, false)
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    !CardDueNotifications.hasPermission(context)
+                                ) {
+                                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    Prefs.setCardNotificationsEnabled(true)
+                                    CardDueScheduler.sync(context, true)
+                                }
+                            },
+                        )
+                        AnimatedVisibility(
+                            visible = cardNotifsEnabled,
+                            enter = expandVertically(moniSpring()) + fadeIn(),
+                            exit = shrinkVertically(moniSpring()) + fadeOut(),
+                        ) {
+                            Column {
+                                HorizontalDivider(color = MoniColors.divider, modifier = Modifier.padding(start = 66.dp))
+                                DaysBeforeSelector(
+                                    selectedDays = cardNotifyDays,
+                                    onSelect = { days ->
+                                        Prefs.setCardNotifyDaysBefore(days)
+                                        CardDueScheduler.triggerCheckNow(context)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    AlertBanner(notifError)
                 }
             }
         }
@@ -203,6 +345,88 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
             modifier = Modifier.padding(start = 8.dp),
         )
         Column(Modifier.fillMaxWidth().cardShadow(shape).clip(shape).background(MoniColors.card)) { content() }
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    icon: Int,
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(enabled = enabled, role = Role.Switch) { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
+                .background(MoniColors.iconTile),
+            contentAlignment = Alignment.Center,
+        ) { LucideIcon(icon, null, tint = if (enabled) MoniColors.iconStroke else MoniColors.mut) }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = if (enabled) MoniColors.fg else MoniColors.mut,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (subtitle != null) {
+                Text(subtitle, color = MoniColors.mut, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Switch(
+            checked = checked,
+            onCheckedChange = if (enabled) onCheckedChange else null,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MoniColors.accFg,
+                checkedTrackColor = MoniColors.acc,
+                uncheckedThumbColor = MoniColors.mut,
+                uncheckedTrackColor = MoniColors.track,
+                uncheckedBorderColor = MoniColors.line,
+                disabledUncheckedThumbColor = MoniColors.mut.copy(alpha = 0.5f),
+                disabledUncheckedTrackColor = MoniColors.track,
+                disabledUncheckedBorderColor = MoniColors.line,
+            ),
+        )
+    }
+}
+
+private val notifyDayOptions = listOf(1, 2, 3, 5, 7)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DaysBeforeSelector(selectedDays: Int, onSelect: (Int) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Avisar con anticipación (y el mismo día)",
+            color = MoniColors.mut,
+            style = MaterialTheme.typography.labelMedium,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            notifyDayOptions.forEach { days ->
+                val label = if (days == 1) "1 día" else "$days días"
+                ChoiceChip(
+                    label = label,
+                    icon = null,
+                    selected = selectedDays == days,
+                    onClick = { onSelect(days) },
+                )
+            }
+        }
     }
 }
 

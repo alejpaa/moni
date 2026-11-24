@@ -148,10 +148,12 @@ private fun ReviewItem(
                 Text(title, color = MoniColors.fg, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(formatDate(t.occurredAt), color = MoniColors.mut, style = MaterialTheme.typography.bodySmall.tabular)
             }
+            val reveal = rememberRevealState()
             Text(
-                (if (t.isIncome) "+" else "−") + money.format(t.amount),
+                formatSignedMoney(t.amount, t.isIncome, reveal.effectiveHidden),
                 color = if (t.isIncome) MoniColors.inc else MoniColors.exp,
                 style = MaterialTheme.typography.titleSmall.tabular.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.revealOnTap(reveal),
             )
         }
         Text("Categoría", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium)

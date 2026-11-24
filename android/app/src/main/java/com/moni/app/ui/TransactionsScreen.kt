@@ -295,11 +295,13 @@ private fun TransactionRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
+            val reveal = rememberRevealState()
             Text(
-                (if (t.isIncome) "+" else "−") + money.format(t.amount),
+                formatSignedMoney(t.amount, t.isIncome, reveal.effectiveHidden),
                 color = if (t.isIncome) MoniColors.inc else MoniColors.exp,
                 style = MaterialTheme.typography.titleSmall.tabular.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
+                modifier = Modifier.revealOnTap(reveal),
             )
             IconButton(onClick = { onDelete(t.id) }) {
                 LucideIcon(LucideR.drawable.lucide_ic_trash_2, "Eliminar movimiento", tint = MoniColors.mut)

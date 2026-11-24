@@ -28,9 +28,25 @@ android {
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${prop("supabase.anonKey", "")}\"")
     }
 
+    // Release signing from android/local.properties (keystore lives outside the repo).
+    // Without those keys the release build falls back to the debug key.
+    signingConfigs {
+        create("release") {
+            prop("release.storeFile", "").takeIf { it.isNotEmpty() }?.let { storeFile = file(it) }
+            storePassword = prop("release.storePassword", "")
+            keyAlias = prop("release.keyAlias", "")
+            keyPassword = prop("release.keyPassword", "")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (localProps.containsKey("release.storeFile")) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -47,6 +63,8 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

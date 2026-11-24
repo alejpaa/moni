@@ -145,11 +145,14 @@ fun DashboardScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     HeroCard(income - expense, income, expense, state.loaded, monthLabel())
                     if (state.accounts.isNotEmpty()) {
+                        val availableReveal = rememberRevealState()
                         Text(
-                            "Disponible en cuentas: ${money.format(totalBalance)}",
+                            "Disponible en cuentas: ${formatMoney(totalBalance, availableReveal.effectiveHidden)}",
                             color = MoniColors.mut,
                             style = MaterialTheme.typography.labelMedium.tabular,
-                            modifier = Modifier.padding(horizontal = 4.dp),
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .revealOnTap(availableReveal),
                         )
                     }
                 }
@@ -232,7 +235,9 @@ private fun CategoryBarRow(s: CatSlice, fraction: Float, index: Int) {
         kotlinx.coroutines.delay(index * 60L)
         progress.animateTo(fraction, moniSpring())
     }
-    val label = "${s.name}, ${money.format(s.amount)}, ${s.pct} %"
+    val reveal = rememberRevealState()
+    val shownAmount = formatMoney(s.amount, reveal.effectiveHidden)
+    val label = if (reveal.effectiveHidden) "${s.name}, monto oculto, ${s.pct} %" else "${s.name}, ${money.format(s.amount)}, ${s.pct} %"
     Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { contentDescription = label }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconTile(s.icon)
@@ -242,8 +247,8 @@ private fun CategoryBarRow(s: CatSlice, fraction: Float, index: Int) {
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clearAndSetSemantics { },
             )
             Text(
-                money.format(s.amount), color = MoniColors.fg, style = MaterialTheme.typography.labelLarge.tabular,
-                modifier = Modifier.clearAndSetSemantics { },
+                shownAmount, color = MoniColors.fg, style = MaterialTheme.typography.labelLarge.tabular,
+                modifier = Modifier.revealOnTap(reveal).clearAndSetSemantics { },
             )
             Text(
                 "${s.pct} %", color = MoniColors.mut, style = MaterialTheme.typography.labelMedium.tabular,
@@ -285,18 +290,23 @@ private fun AccountsSummary(accounts: List<Account>, balances: Map<String, Doubl
                 val debt = a.type == "credit_card"
                 val value = balances[a.id] ?: a.openingBalance
                 val caption = if (debt) "Deuda" else "Saldo"
+                val reveal = rememberRevealState()
+                val shownValue = formatMoney(value, reveal.effectiveHidden)
                 SoftCard(
                     Modifier
                         .widthIn(min = 140.dp, max = 220.dp)
-                        .semantics(mergeDescendants = true) { contentDescription = "${a.name}, $caption ${money.format(value)}" },
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = if (reveal.effectiveHidden) "${a.name}, $caption oculto" else "${a.name}, $caption ${money.format(value)}"
+                        },
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(a.name, color = MoniColors.mut, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            money.format(value),
-                            color = if (debt && value > 0) MoniColors.exp else MoniColors.fg,
+                            shownValue,
+                            color = if (debt && value > 0 && !reveal.effectiveHidden) MoniColors.exp else MoniColors.fg,
                             style = MaterialTheme.typography.titleMedium.tabular,
                             maxLines = 1,
+                            modifier = Modifier.revealOnTap(reveal),
                         )
                         if (debt) Text("Deuda", color = MoniColors.mut, style = MaterialTheme.typography.labelSmall)
                     }
@@ -310,13 +320,15 @@ private fun AccountsSummary(accounts: List<Account>, balances: Map<String, Doubl
 private fun RecentRow(t: Transaction, category: Category?) {
     val income = t.isIncome
     val name = category?.name ?: if (income) "Ingreso" else "Gasto"
-    val amount = (if (income) "+" else "−") + money.format(t.amount)
+    val reveal = rememberRevealState()
+    val amount = formatSignedMoney(t.amount, income, reveal.effectiveHidden)
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = "$name, ${formatDate(t.occurredAt)}, ${if (income) "ingreso" else "gasto"} ${money.format(t.amount)}"
+                val descAmount = if (reveal.effectiveHidden) "monto oculto" else money.format(t.amount)
+                contentDescription = "$name, ${formatDate(t.occurredAt)}, ${if (income) "ingreso" else "gasto"} $descAmount"
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -330,6 +342,7 @@ private fun RecentRow(t: Transaction, category: Category?) {
             amount,
             color = if (income) MoniColors.inc else MoniColors.exp,
             style = MaterialTheme.typography.labelLarge.tabular,
+            modifier = Modifier.revealOnTap(reveal),
         )
     }
 }
@@ -360,7 +373,8 @@ private fun UpcomingReminderRow(r: Reminder, category: Category?) {
     val freq = frequencyLabel(r.frequency)
     val date = formatDate(r.dueDate)
     val subtitle = listOf(freq, date).filter { it.isNotEmpty() }.joinToString(" · ")
-    val amountText = r.amount?.let { (if (isIncome) "+" else "−") + money.format(it) }
+    val reveal = rememberRevealState()
+    val amountText = r.amount?.let { formatSignedMoney(it, isIncome, reveal.effectiveHidden) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -369,7 +383,10 @@ private fun UpcomingReminderRow(r: Reminder, category: Category?) {
                 contentDescription = listOfNotNull(
                     r.title,
                     subtitle.takeIf { it.isNotEmpty() },
-                    r.amount?.let { (if (isIncome) "ingreso " else "gasto ") + money.format(it) },
+                    r.amount?.let {
+                        val descAmount = if (reveal.effectiveHidden) "monto oculto" else money.format(it)
+                        (if (isIncome) "ingreso " else "gasto ") + descAmount
+                    },
                 ).joinToString(", ")
             },
         verticalAlignment = Alignment.CenterVertically,
@@ -386,6 +403,7 @@ private fun UpcomingReminderRow(r: Reminder, category: Category?) {
                 amountText,
                 color = if (isIncome) MoniColors.inc else MoniColors.exp,
                 style = MaterialTheme.typography.labelLarge.tabular,
+                modifier = Modifier.revealOnTap(reveal),
             )
         }
     }

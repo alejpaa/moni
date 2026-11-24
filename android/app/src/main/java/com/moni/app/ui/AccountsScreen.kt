@@ -77,8 +77,6 @@ internal fun accountTypeIcon(type: String) = when (type) {
     else -> LucideR.drawable.lucide_ic_circle_dollar_sign
 }
 
-private fun soles(v: Double) = (if (v < 0) "-S/ " else "S/ ") + money.format(kotlin.math.abs(v))
-
 /** Which account the form sheet is showing: none, a new one, or an existing one. */
 private sealed interface FormTarget {
     data object New : FormTarget
@@ -121,16 +119,28 @@ fun AccountsScreen(
         item { Entrance { ScreenHeader("Cuentas") } }
         item {
             Entrance(delayMs = 60) {
+                val availReveal = rememberRevealState()
+                val debtReveal = rememberRevealState()
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(MoniColors.hero).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text("Disponible", color = MoniColors.heroFg, style = MaterialTheme.typography.labelMedium)
-                    Text(soles(available), color = Color.White, style = MaterialTheme.typography.headlineMedium.tabular)
+                    Text(
+                        formatSoles(available, availReveal.effectiveHidden),
+                        color = Color.White,
+                        style = MaterialTheme.typography.headlineMedium.tabular,
+                        modifier = Modifier.revealOnTap(availReveal),
+                    )
                     if (hasCards) {
                         Spacer(Modifier.height(6.dp))
                         Text("Deuda de tarjetas", color = MoniColors.heroFg, style = MaterialTheme.typography.labelMedium)
-                        Text(soles(cardDebt), color = Color.White, style = MaterialTheme.typography.titleMedium.tabular)
+                        Text(
+                            formatSoles(cardDebt, debtReveal.effectiveHidden),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium.tabular,
+                            modifier = Modifier.revealOnTap(debtReveal),
+                        )
                     }
                 }
             }
@@ -234,11 +244,15 @@ private fun AccountCard(a: Account, balance: Double, onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
+            val balanceReveal = rememberRevealState()
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.revealOnTap(balanceReveal),
+            ) {
                 if (card) Text("Deuda", color = MoniColors.mut, style = MaterialTheme.typography.labelSmall)
                 Text(
-                    soles(balance),
-                    color = if (card) MoniColors.exp else if (balance < 0) MoniColors.exp else MoniColors.fg,
+                    formatSoles(balance, balanceReveal.effectiveHidden),
+                    color = if (card) MoniColors.exp else if (balance < 0 && !balanceReveal.effectiveHidden) MoniColors.exp else MoniColors.fg,
                     style = MaterialTheme.typography.titleSmall.tabular,
                 )
             }
@@ -253,9 +267,15 @@ private fun CardUsage(a: Account, debt: Double) {
     if (limit != null && limit > 0) {
         val fraction = (debt / limit).toFloat().coerceIn(0f, 1f)
         val animated by animateFloatAsState(fraction, moniSpring(), label = "usage")
+        val availReveal = rememberRevealState()
         Row {
             Text("Disponible", color = MoniColors.mut, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-            Text(soles(limit - debt), color = MoniColors.fg, style = MaterialTheme.typography.bodySmall.tabular)
+            Text(
+                formatSoles(limit - debt, availReveal.effectiveHidden),
+                color = MoniColors.fg,
+                style = MaterialTheme.typography.bodySmall.tabular,
+                modifier = Modifier.revealOnTap(availReveal),
+            )
         }
         Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MoniColors.track)) {
             Box(
