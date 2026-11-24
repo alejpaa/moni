@@ -143,6 +143,7 @@ fun AppShell(state: UiState, vm: MoniViewModel, profileVm: ProfileViewModel) {
                         onOpenReview = openReview,
                         onLoadMore = vm::loadMoreTransactions,
                         onRetry = vm::refresh,
+                        onRetrySession = vm::retrySessionOrRefresh,
                     )
                     Tab.Accounts -> AccountsScreen(
                         state = state,
@@ -151,12 +152,14 @@ fun AppShell(state: UiState, vm: MoniViewModel, profileVm: ProfileViewModel) {
                         onSave = vm::saveAccount,
                         onSetArchived = vm::setAccountArchived,
                         onRetry = vm::refresh,
+                        onRetrySession = vm::retrySessionOrRefresh,
                     )
                     Tab.Profile -> ProfileScreen(
                         state = state,
                         vm = profileVm,
                         contentPadding = contentPadding,
                         onSignOut = vm::signOut,
+                        onRetrySession = vm::retrySessionOrRefresh,
                         onClearSheetError = vm::clearError,
                         onCreateCategory = vm::createCategory,
                         onUpdateCategory = vm::updateCategory,

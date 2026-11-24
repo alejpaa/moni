@@ -1,9 +1,11 @@
 package com.moni.app.data
 
+import io.github.jan.supabase.auth.SignOutScope
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -31,7 +33,15 @@ class TransactionRepository {
         }
     }
 
-    suspend fun signOut() = supabase.auth.signOut()
+    suspend fun signOut() {
+        try {
+            supabase.auth.signOut()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            supabase.auth.signOut(SignOutScope.LOCAL)
+        }
+    }
 
     suspend fun listPage(workspaceId: String, offset: Long = 0L, pageSize: Long = PAGE_SIZE): List<Transaction> =
         table.select(txColumns) {

@@ -82,6 +82,7 @@ fun ProfileScreen(
     vm: ProfileViewModel,
     contentPadding: PaddingValues,
     onSignOut: () -> Unit,
+    onRetrySession: () -> Unit,
     onClearSheetError: () -> Unit,
     onCreateCategory: (name: String, kind: String, icon: String, onDone: () -> Unit) -> Unit,
     onUpdateCategory: (id: String, name: String, icon: String, onDone: () -> Unit) -> Unit,
@@ -146,6 +147,15 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(key = "header") { Entrance { ScreenHeader("Perfil") } }
+        state.error?.let { err ->
+            item(key = "error") {
+                AlertBanner(
+                    message = err,
+                    actionLabel = if (state.sessionRefreshFailed) "Reintentar" else null,
+                    onAction = if (state.sessionRefreshFailed) onRetrySession else null,
+                )
+            }
+        }
         profileState.loadError?.let { loadErr ->
             item(key = "profile-load-error") {
                 AlertBanner(

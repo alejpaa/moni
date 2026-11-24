@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -106,11 +108,12 @@ internal fun promptBiometric(
 internal fun LockScreen(
     onUnlocked: () -> Unit,
     onSignOut: () -> Unit,
+    signingOut: Boolean = false,
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findFragmentActivity() }
     var bioStatus by remember { mutableStateOf(biometricStatus(context)) }
-    var prompting by rememberSaveable { mutableStateOf(false) }
+    var prompting by remember { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
 
     val currentOnUnlocked by rememberUpdatedState(onUnlocked)
@@ -193,13 +196,27 @@ internal fun LockScreen(
             PrimaryButton(
                 text = "Desbloquear",
                 onClick = { launchPrompt() },
-                enabled = !prompting,
+                enabled = !prompting && !signingOut,
                 icon = LucideR.drawable.lucide_ic_fingerprint_pattern,
             )
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = onSignOut,
+                enabled = !signingOut,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(
+                    if (signingOut) "Cerrando sesión…" else "Cerrar sesión",
+                    color = MoniColors.mut,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
         } else {
             PrimaryButton(
-                text = "Cerrar sesión",
+                text = if (signingOut) "Cerrando sesión…" else "Cerrar sesión",
                 onClick = onSignOut,
+                enabled = !signingOut,
+                loading = signingOut,
                 icon = LucideR.drawable.lucide_ic_log_out,
             )
         }

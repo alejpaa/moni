@@ -26,8 +26,11 @@ import com.moni.app.data.supabase
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableJob
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -110,17 +113,38 @@ class MoniViewModel(
     var isUnlocked by mutableStateOf(!Prefs.appLockEnabled.value)
         private set
 
+    var signingOut by mutableStateOf(false)
+        private set
+
     private var loadedUserId: String? = null
     private var hasLoadedForSession = false
+    @Volatile
     private var sessionSeq = 0
+    private var sessionJob: CompletableJob = SupervisorJob(viewModelScope.coroutineContext[Job])
+    private val sessionScope: CoroutineScope
+        get() = CoroutineScope(viewModelScope.coroutineContext + sessionJob)
     private var refreshJob: Job? = null
     private val storeMutex = Mutex()
+    @Volatile
+    private var disableLockOnSignOut = false
 
     // Session-scoped UI animation trackers so tab switches never replay entrances or count-ups.
     private val enteredTabs = mutableSetOf<String>()
     private var heroAnimated = false
     private var dashboardBarsAnimated = false
     internal val rowTracker = RowTracker()
+
+    private fun resetSessionJobs(): Int {
+        refreshJob?.cancel()
+        refreshJob = null
+        sessionJob.cancel()
+        sessionJob = SupervisorJob(viewModelScope.coroutineContext[Job])
+        return ++sessionSeq
+    }
+
+    private inline fun updateIfSession(seq: Int, transform: (UiState) -> UiState) {
+        _state.update { s -> if (sessionSeq == seq) transform(s) else s }
+    }
 
     init {
         viewModelScope.launch {
@@ -130,7 +154,7 @@ class MoniViewModel(
                         val userId = status.session.user?.id ?: repo.currentUserId()
                         val email = status.session.user?.email ?: repo.currentEmail()
                         val userChanged = !hasLoadedForSession || (userId != null && userId != loadedUserId)
-                        val nextSessionKey = if (userChanged) ++sessionSeq else _state.value.sessionKey
+                        val nextSessionKey = if (userChanged) resetSessionJobs() else _state.value.sessionKey
                         _state.update { s ->
                             if (userChanged) {
                                 UiState(
@@ -160,8 +184,7 @@ class MoniViewModel(
                         }
                     }
                     is SessionStatus.NotAuthenticated -> {
-                        refreshJob?.cancel()
-                        refreshJob = null
+                        val nextSessionKey = resetSessionJobs()
                         hasLoadedForSession = false
                         loadedUserId = null
                         enteredTabs.clear()
@@ -170,7 +193,11 @@ class MoniViewModel(
                         rowTracker.reset()
                         isUnlocked = true
                         Prefs.clearBackgroundedAtMs()
-                        _state.value = UiState(loading = false, sessionKey = ++sessionSeq)
+                        _state.value = UiState(loading = false, sessionKey = nextSessionKey)
+                        if (disableLockOnSignOut) {
+                            disableLockOnSignOut = false
+                            Prefs.setAppLockEnabled(false)
+                        }
                     }
                     is SessionStatus.RefreshFailure -> {
                         val hasCachedSession = _state.value.signedIn || supabase.auth.currentSessionOrNull() != null
@@ -192,6 +219,7 @@ class MoniViewModel(
     }
 
     fun unlock() {
+        if (signingOut) return
         isUnlocked = true
     }
 
@@ -214,12 +242,7 @@ class MoniViewModel(
         }
     }
 
-    fun signOutAndDisableLock() {
-        Prefs.setAppLockEnabled(false)
-        Prefs.clearBackgroundedAtMs()
-        isUnlocked = true
-        signOut()
-    }
+    fun signOutAndDisableLock() = performSignOut(disableLock = true)
 
     fun shouldAnimateEntrance(tabKey: String): Boolean = tabKey !in enteredTabs
     fun markTabEntered(tabKey: String) {
@@ -236,50 +259,81 @@ class MoniViewModel(
         dashboardBarsAnimated = true
     }
 
-    fun signIn(email: String, password: String) = run(busy = true) { repo.signIn(email, password) }
+    fun signIn(email: String, password: String) = run(busy = true, sessionScoped = false) { _ -> repo.signIn(email, password) }
 
-    fun signUp(email: String, password: String) = run(busy = true) {
+    fun signUp(email: String, password: String) = run(busy = true, sessionScoped = false) { _ ->
         repo.signUp(email, password)
         if (supabase.auth.currentSessionOrNull() == null) {
             _state.update { it.copy(notice = "Te enviamos un correo para confirmar tu cuenta. Después podrás entrar.") }
         }
     }
 
-    fun signOut() = run { repo.signOut() }
+    fun signOut() = performSignOut(disableLock = false)
+
+    private fun performSignOut(disableLock: Boolean) {
+        if (signingOut) return
+        signingOut = true
+        if (disableLock) {
+            disableLockOnSignOut = true
+        }
+        viewModelScope.launch {
+            try {
+                repo.signOut()
+                if (disableLockOnSignOut && !_state.value.signedIn) {
+                    disableLockOnSignOut = false
+                    Prefs.setAppLockEnabled(false)
+                    Prefs.clearBackgroundedAtMs()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (disableLock) disableLockOnSignOut = false
+                _state.update { it.copy(error = friendlyError(e)) }
+            } finally {
+                signingOut = false
+            }
+        }
+    }
 
     fun retrySessionOrRefresh() {
-        viewModelScope.launch {
-            _state.update { it.copy(error = null, sessionRefreshFailed = false) }
+        val seq = sessionSeq
+        val wasRefreshFailed = _state.value.sessionRefreshFailed
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(error = null, sessionRefreshFailed = false) }
             try {
-                if (_state.value.sessionRefreshFailed || supabase.auth.currentSessionOrNull() != null) {
+                if (wasRefreshFailed || supabase.auth.currentSessionOrNull() != null) {
                     supabase.auth.refreshCurrentSession()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(error = friendlyError(e), sessionRefreshFailed = true) }
+                updateIfSession(seq) { it.copy(error = friendlyError(e), sessionRefreshFailed = true) }
                 return@launch
             }
-            refresh()
+            if (sessionSeq == seq) refresh()
         }
     }
 
-    private suspend fun ensureWorkspace(): String {
+    private suspend fun ensureWorkspace(seq: Int): String {
+        if (sessionSeq != seq) throw CancellationException("Session changed")
         _state.value.workspaceId?.let { return it }
         val ws = workspaceRepo.resolveActiveWorkspace()
-        _state.update { it.copy(workspaceId = ws.workspaceId, workspaceRole = ws.role) }
+        if (sessionSeq != seq) throw CancellationException("Session changed")
+        updateIfSession(seq) { it.copy(workspaceId = ws.workspaceId, workspaceRole = ws.role) }
         return ws.workspaceId
     }
 
     /** Loads all shared store slices in parallel, serialized against concurrent refreshes/mutations. */
     fun refresh() {
         val prev = refreshJob
-        refreshJob = viewModelScope.launch {
+        val seq = sessionSeq
+        refreshJob = sessionScope.launch {
             prev?.cancelAndJoin()
-            _state.update { it.copy(error = null, loadFailed = false, sessionRefreshFailed = false) }
+            if (sessionSeq != seq) return@launch
+            updateIfSession(seq) { it.copy(error = null, loadFailed = false, sessionRefreshFailed = false) }
             try {
                 storeMutex.withLock {
-                    val wsId = ensureWorkspace()
+                    val wsId = ensureWorkspace(seq)
                     coroutineScope {
                         val txDef = async { repo.listPage(wsId, offset = 0L) }
                         val pendingDef = async { safeResult { repo.listPending(wsId) } }
@@ -312,9 +366,10 @@ class MoniViewModel(
                             remRes.exceptionOrNull(),
                         ).firstOrNull()?.let(::friendlyError)
 
+                        if (sessionSeq != seq) return@coroutineScope
                         rowTracker.update(items.map { it.id }, loaded = true)
 
-                        _state.update { s ->
+                        updateIfSession(seq) { s ->
                             s.copy(
                                 transactions = items,
                                 hasMoreTransactions = items.size >= TransactionRepository.PAGE_SIZE.toInt(),
@@ -339,7 +394,7 @@ class MoniViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { s ->
+                updateIfSession(seq) { s ->
                     s.copy(
                         loadFailed = !s.loaded,
                         error = friendlyError(e),
@@ -352,17 +407,19 @@ class MoniViewModel(
     fun loadMoreTransactions() {
         val current = _state.value
         if (current.loadingMoreTransactions || !current.hasMoreTransactions) return
-        viewModelScope.launch {
-            _state.update { it.copy(loadingMoreTransactions = true, error = null) }
+        val seq = sessionSeq
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(loadingMoreTransactions = true, error = null) }
             try {
                 storeMutex.withLock {
-                    val wsId = ensureWorkspace()
+                    val wsId = ensureWorkspace(seq)
                     val offset = _state.value.transactions.size.toLong()
                     val more = repo.listPage(wsId, offset = offset)
+                    if (sessionSeq != seq) return@withLock
                     val existingIds = _state.value.transactions.asSequence().map { it.id }.toHashSet()
                     val fresh = more.filterNot { it.id in existingIds }
                     rowTracker.markBaseline(fresh.map { it.id })
-                    _state.update { s ->
+                    updateIfSession(seq) { s ->
                         s.copy(
                             transactions = s.transactions + fresh,
                             hasMoreTransactions = more.size >= TransactionRepository.PAGE_SIZE.toInt(),
@@ -373,18 +430,21 @@ class MoniViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(loadingMoreTransactions = false, error = friendlyError(e)) }
+                updateIfSession(seq) { it.copy(loadingMoreTransactions = false, error = friendlyError(e)) }
+            } finally {
+                updateIfSession(seq) { it.copy(loadingMoreTransactions = false) }
             }
         }
     }
 
     fun retryCategories() {
-        viewModelScope.launch {
-            _state.update { it.copy(categoriesError = null) }
+        val seq = sessionSeq
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(categoriesError = null) }
             try {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 val categories = categoryRepo.listAll(wsId)
-                _state.update {
+                updateIfSession(seq) {
                     it.copy(
                         allCategories = categories,
                         categoriesLoaded = true,
@@ -394,7 +454,7 @@ class MoniViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(categoriesError = friendlyError(e)) }
+                updateIfSession(seq) { it.copy(categoriesError = friendlyError(e)) }
             }
         }
     }
@@ -408,11 +468,11 @@ class MoniViewModel(
         note: String?,
         recurring: RecurringInput? = null,
         onDone: () -> Unit = {},
-    ) = run(busy = true, sheet = true) {
+    ) = run(busy = true, sheet = true) { seq ->
         if (_state.value.isViewer) return@run
         refreshJob?.cancelAndJoin()
         storeMutex.withLock {
-            val wsId = ensureWorkspace()
+            val wsId = ensureWorkspace(seq)
             val createdReminder = recurring?.let { r ->
                 reminderRepo.create(
                     NewReminder(
@@ -442,9 +502,10 @@ class MoniViewModel(
                 throw e
             }
             val (balances, month) = refreshBalancesAndMonth(wsId)
+            if (sessionSeq != seq) return@run
             val updatedTx = (listOf(createdTx) + _state.value.transactions).sortedByDescending { it.occurredAt }
             rowTracker.update(updatedTx.map { it.id }, loaded = true)
-            _state.update { s ->
+            updateIfSession(seq) { s ->
                 val fallbackMonth = if (isInCurrentLimaMonth(createdTx.occurredAt)) {
                     s.monthTransactions + TxLite(createdTx.type, createdTx.amount, createdTx.categoryId, createdTx.occurredAt)
                 } else {
@@ -461,24 +522,26 @@ class MoniViewModel(
                 )
             }
         }
-        onDone()
+        if (sessionSeq == seq) onDone()
     }
 
     /** Confirms a pending row (optionally with a new category/account). */
     fun confirm(id: String, categoryId: String?, accountId: String?) {
         if (_state.value.isViewer || id in _state.value.reviewWorkingIds) return
-        viewModelScope.launch {
-            _state.update { it.copy(reviewWorkingIds = it.reviewWorkingIds + id, sheetError = null) }
+        val seq = sessionSeq
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(reviewWorkingIds = it.reviewWorkingIds + id, sheetError = null) }
             try {
                 refreshJob?.cancelAndJoin()
                 storeMutex.withLock {
-                    val wsId = ensureWorkspace()
+                    val wsId = ensureWorkspace(seq)
                     val confirmed = repo.review(wsId, id, "confirmed", categoryId, accountId)
                     val (balances, month) = refreshBalancesAndMonth(wsId)
+                    if (sessionSeq != seq) return@withLock
                     val updatedTx = (listOf(confirmed) + _state.value.transactions.filterNot { it.id == confirmed.id })
                         .sortedByDescending { it.occurredAt }
                     rowTracker.update(updatedTx.map { it.id }, loaded = true)
-                    _state.update { s ->
+                    updateIfSession(seq) { s ->
                         s.copy(
                             pending = s.pending.filterNot { it.id == id },
                             transactions = updatedTx,
@@ -492,42 +555,44 @@ class MoniViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(sheetError = friendlyError(e)) }
+                updateIfSession(seq) { it.copy(sheetError = friendlyError(e)) }
             } finally {
-                _state.update { it.copy(reviewWorkingIds = it.reviewWorkingIds - id) }
+                updateIfSession(seq) { it.copy(reviewWorkingIds = it.reviewWorkingIds - id) }
             }
         }
     }
 
     fun ignore(id: String) {
         if (_state.value.isViewer || id in _state.value.reviewWorkingIds) return
-        viewModelScope.launch {
-            _state.update { it.copy(reviewWorkingIds = it.reviewWorkingIds + id, sheetError = null) }
+        val seq = sessionSeq
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(reviewWorkingIds = it.reviewWorkingIds + id, sheetError = null) }
             try {
                 refreshJob?.cancelAndJoin()
                 storeMutex.withLock {
-                    val wsId = ensureWorkspace()
+                    val wsId = ensureWorkspace(seq)
                     repo.review(wsId, id, "ignored")
-                    _state.update { s -> s.copy(pending = s.pending.filterNot { it.id == id }) }
+                    updateIfSession(seq) { s -> s.copy(pending = s.pending.filterNot { it.id == id }) }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(sheetError = friendlyError(e)) }
+                updateIfSession(seq) { it.copy(sheetError = friendlyError(e)) }
             } finally {
-                _state.update { it.copy(reviewWorkingIds = it.reviewWorkingIds - id) }
+                updateIfSession(seq) { it.copy(reviewWorkingIds = it.reviewWorkingIds - id) }
             }
         }
     }
 
     fun delete(id: String) {
         if (_state.value.isViewer || id in _state.value.deletingIds) return
-        viewModelScope.launch {
-            _state.update { it.copy(deletingIds = it.deletingIds + id, error = null) }
+        val seq = sessionSeq
+        sessionScope.launch {
+            updateIfSession(seq) { it.copy(deletingIds = it.deletingIds + id, error = null) }
             try {
                 refreshJob?.cancelAndJoin()
                 storeMutex.withLock {
-                    val wsId = ensureWorkspace()
+                    val wsId = ensureWorkspace(seq)
                     val existing = _state.value.transactions.find { it.id == id }
                     if (existing?.source == "installment") {
                         repo.review(wsId, id, "ignored")
@@ -535,7 +600,7 @@ class MoniViewModel(
                         repo.delete(wsId, id)
                     }
                     val (balances, month) = refreshBalancesAndMonth(wsId)
-                    _state.update { s ->
+                    updateIfSession(seq) { s ->
                         s.copy(
                             transactions = s.transactions.filterNot { it.id == id },
                             balances = balances ?: s.balances,
@@ -548,27 +613,27 @@ class MoniViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(error = friendlyError(e)) }
+                updateIfSession(seq) { it.copy(error = friendlyError(e)) }
             } finally {
-                _state.update { it.copy(deletingIds = it.deletingIds - id) }
+                updateIfSession(seq) { it.copy(deletingIds = it.deletingIds - id) }
             }
         }
     }
 
     /** [id] == null creates. [onDone] runs after success. */
     fun saveAccount(id: String?, input: AccountInput, onDone: () -> Unit) =
-        run(busy = true, sheet = true, mapError = ::accountError) {
+        run(busy = true, sheet = true, mapError = ::accountError) { seq ->
             if (_state.value.isViewer) return@run
             refreshJob?.cancelAndJoin()
             storeMutex.withLock {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 if (id == null) accountRepo.create(wsId, input) else accountRepo.update(wsId, id, input)
                 coroutineScope {
                     val accDef = async { accountRepo.list(wsId, includeArchived = true) }
                     val balDef = async { safeResult { accountRepo.balances(wsId) } }
                     val accounts = accDef.await()
                     val balances = balDef.await().getOrNull()
-                    _state.update { s ->
+                    updateIfSession(seq) { s ->
                         s.copy(
                             allAccounts = accounts,
                             accountsLoaded = true,
@@ -578,61 +643,61 @@ class MoniViewModel(
                     }
                 }
             }
-            onDone()
+            if (sessionSeq == seq) onDone()
         }
 
     fun setAccountArchived(id: String, archived: Boolean, fromSheet: Boolean = false, onDone: () -> Unit = {}) =
-        run(busy = true, sheet = fromSheet, mapError = ::accountError) {
+        run(busy = true, sheet = fromSheet, mapError = ::accountError) { seq ->
             if (_state.value.isViewer) return@run
             refreshJob?.cancelAndJoin()
             storeMutex.withLock {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 accountRepo.setArchived(wsId, id, archived)
-                _state.update { s ->
+                updateIfSession(seq) { s ->
                     s.copy(allAccounts = s.allAccounts.map { if (it.id == id) it.copy(archived = archived) else it })
                 }
             }
-            onDone()
+            if (sessionSeq == seq) onDone()
         }
 
     fun createCategory(name: String, kind: String, icon: String, onDone: () -> Unit) =
-        run(busy = true, sheet = true, mapError = ::categoryError) {
+        run(busy = true, sheet = true, mapError = ::categoryError) { seq ->
             if (_state.value.isViewer) return@run
             refreshJob?.cancelAndJoin()
             storeMutex.withLock {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 categoryRepo.create(wsId, name.trim(), kind, icon)
                 val categories = categoryRepo.listAll(wsId)
-                _state.update { it.copy(allCategories = categories, categoriesLoaded = true, categoriesError = null) }
+                updateIfSession(seq) { it.copy(allCategories = categories, categoriesLoaded = true, categoriesError = null) }
             }
-            onDone()
+            if (sessionSeq == seq) onDone()
         }
 
     fun updateCategory(id: String, name: String, icon: String, onDone: () -> Unit) =
-        run(busy = true, sheet = true, mapError = ::categoryError) {
+        run(busy = true, sheet = true, mapError = ::categoryError) { seq ->
             if (_state.value.isViewer) return@run
             refreshJob?.cancelAndJoin()
             storeMutex.withLock {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 categoryRepo.update(wsId, id, name.trim(), icon)
                 val categories = categoryRepo.listAll(wsId)
-                _state.update { it.copy(allCategories = categories, categoriesLoaded = true, categoriesError = null) }
+                updateIfSession(seq) { it.copy(allCategories = categories, categoriesLoaded = true, categoriesError = null) }
             }
-            onDone()
+            if (sessionSeq == seq) onDone()
         }
 
     fun setCategoryArchived(id: String, archived: Boolean, onDone: () -> Unit = {}) =
-        run(busy = true, sheet = true, mapError = ::categoryError) {
+        run(busy = true, sheet = true, mapError = ::categoryError) { seq ->
             if (_state.value.isViewer) return@run
             refreshJob?.cancelAndJoin()
             storeMutex.withLock {
-                val wsId = ensureWorkspace()
+                val wsId = ensureWorkspace(seq)
                 categoryRepo.setArchived(wsId, id, archived)
-                _state.update { s ->
+                updateIfSession(seq) { s ->
                     s.copy(allCategories = s.allCategories.map { if (it.id == id) it.copy(archived = archived) else it })
                 }
             }
-            onDone()
+            if (sessionSeq == seq) onDone()
         }
 
     fun clearError() = _state.update { it.copy(error = null, sheetError = null, notice = null) }
@@ -655,13 +720,19 @@ class MoniViewModel(
     private fun run(
         busy: Boolean = false,
         sheet: Boolean = false,
+        sessionScoped: Boolean = true,
         mapError: (Throwable) -> String = ::friendlyError,
-        block: suspend () -> Unit,
+        block: suspend (Int) -> Unit,
     ) {
         if (busy && _state.value.busy) return
-        viewModelScope.launch {
+        val seq = sessionSeq
+        val scope = if (sessionScoped) sessionScope else viewModelScope
+        scope.launch {
+            fun updateScoped(transform: (UiState) -> UiState) {
+                if (sessionScoped) updateIfSession(seq, transform) else _state.update(transform)
+            }
             if (busy) {
-                _state.update {
+                updateScoped {
                     it.copy(
                         busy = true,
                         error = if (sheet) it.error else null,
@@ -671,14 +742,14 @@ class MoniViewModel(
                 }
             }
             try {
-                block()
+                block(seq)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 val msg = mapError(e)
-                _state.update { if (sheet) it.copy(sheetError = msg) else it.copy(error = msg) }
+                updateScoped { if (sheet) it.copy(sheetError = msg) else it.copy(error = msg) }
             } finally {
-                if (busy) _state.update { it.copy(busy = false) }
+                if (busy) updateScoped { it.copy(busy = false) }
             }
         }
     }

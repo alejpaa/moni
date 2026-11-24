@@ -98,6 +98,7 @@ class MainActivity : FragmentActivity() {
                                 LockScreen(
                                     onUnlocked = vm::unlock,
                                     onSignOut = vm::signOutAndDisableLock,
+                                    signingOut = vm.signingOut,
                                 )
                             state.signedIn -> key(state.sessionKey) {
                                 AppShell(state, vm, profileVm)

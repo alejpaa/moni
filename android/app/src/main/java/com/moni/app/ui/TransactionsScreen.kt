@@ -105,10 +105,12 @@ fun TransactionsScreen(
     onOpenReview: () -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
+    onRetrySession: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(Filter.All) }
     var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
     val categoriesById = remember(state.allCategories) { state.allCategories.associateBy { it.id } }
+    val retry = if (state.sessionRefreshFailed) onRetrySession else onRetry
 
     val visible = remember(state.transactions, filter) {
         when (filter) {
@@ -142,12 +144,12 @@ fun TransactionsScreen(
         if (state.loadFailed && !state.loaded) {
             ErrorRetryCard(
                 message = state.error ?: "No se pudieron cargar tus movimientos",
-                onRetry = onRetry,
+                onRetry = retry,
             )
             return@Column
         }
 
-        state.error?.let { AlertBanner(it, actionLabel = "Reintentar", onAction = onRetry) }
+        state.error?.let { AlertBanner(it, actionLabel = "Reintentar", onAction = retry) }
 
         val cardShape = RoundedCornerShape(20.dp)
         Entrance(Modifier.weight(1f), delayMs = 140) {
@@ -159,7 +161,14 @@ fun TransactionsScreen(
                     .background(MoniColors.card),
             ) {
                 if (visible.isEmpty()) {
-                    EmptyState(state.loaded, filtered = state.transactions.isNotEmpty(), bottomPadding = contentPadding.calculateBottomPadding())
+                    EmptyState(
+                        loaded = state.loaded,
+                        filtered = state.transactions.isNotEmpty(),
+                        hasMore = state.hasMoreTransactions,
+                        loadingMore = state.loadingMoreTransactions,
+                        onLoadMore = onLoadMore,
+                        bottomPadding = contentPadding.calculateBottomPadding(),
+                    )
                 } else {
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -184,19 +193,7 @@ fun TransactionsScreen(
                                     Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    TextButton(
-                                        onClick = onLoadMore,
-                                        enabled = !state.loadingMoreTransactions,
-                                        modifier = Modifier.heightIn(min = 48.dp),
-                                    ) {
-                                        if (state.loadingMoreTransactions) {
-                                            CircularProgressIndicator(Modifier.size(16.dp), color = MoniColors.acc, strokeWidth = 2.dp)
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("Cargando…", color = MoniColors.mut)
-                                        } else {
-                                            Text("Cargar más", color = MoniColors.iconStroke)
-                                        }
-                                    }
+                                    LoadMoreButton(loading = state.loadingMoreTransactions, onClick = onLoadMore)
                                 }
                             }
                         }
@@ -273,7 +270,31 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyState(loaded: Boolean, filtered: Boolean, bottomPadding: androidx.compose.ui.unit.Dp) {
+private fun LoadMoreButton(loading: Boolean, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        enabled = !loading,
+        modifier = Modifier.heightIn(min = 48.dp),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(16.dp), color = MoniColors.acc, strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("Cargando…", color = MoniColors.mut)
+        } else {
+            Text("Cargar más", color = MoniColors.iconStroke)
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    loaded: Boolean,
+    filtered: Boolean,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    onLoadMore: () -> Unit,
+    bottomPadding: androidx.compose.ui.unit.Dp,
+) {
     Column(
         Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 24.dp + bottomPadding),
         verticalArrangement = Arrangement.Center,
@@ -299,6 +320,10 @@ private fun EmptyState(loaded: Boolean, filtered: Boolean, bottomPadding: androi
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )
+        if (hasMore) {
+            Spacer(Modifier.height(12.dp))
+            LoadMoreButton(loading = loadingMore, onClick = onLoadMore)
+        }
     }
 }
 
@@ -342,6 +367,9 @@ private fun TransactionRow(
     val tint = animateColorAsState(
         targetValue = if (isNew && !faded) MoniColors.newTint else Color.Transparent,
         animationSpec = if (faded && animScale > 0f) tween(1600) else snap(),
+        finishedListener = {
+            if (faded) tracker.newIds.remove(t.id)
+        },
         label = "newTint",
     )
 

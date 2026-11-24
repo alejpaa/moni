@@ -93,6 +93,7 @@ fun AccountsScreen(
     onSave: (id: String?, input: AccountInput, onDone: () -> Unit) -> Unit,
     onSetArchived: (id: String, archived: Boolean, fromSheet: Boolean, onDone: () -> Unit) -> Unit,
     onRetry: () -> Unit,
+    onRetrySession: () -> Unit,
 ) {
     var formOpen by rememberSaveable { mutableStateOf(false) }
     var editingAccountId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -102,6 +103,7 @@ fun AccountsScreen(
     val archived = remember(state.allAccounts) { state.allAccounts.filter { it.archived } }
     val ready = state.accountsLoaded && state.balancesLoaded
     val totals = remember(state.allAccounts, state.balances) { computeBalanceTotals(state.allAccounts, state.balances) }
+    val retry = if (state.sessionRefreshFailed) onRetrySession else onRetry
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -118,7 +120,7 @@ fun AccountsScreen(
             item(key = "main-error") {
                 ErrorRetryCard(
                     message = state.error ?: "No se pudieron cargar tus cuentas",
-                    onRetry = onRetry,
+                    onRetry = retry,
                 )
             }
             return@LazyColumn
@@ -171,7 +173,7 @@ fun AccountsScreen(
             }
         }
         if (state.error != null && !formOpen) {
-            item(key = "error") { AlertBanner(state.error, actionLabel = "Reintentar", onAction = onRetry) }
+            item(key = "error") { AlertBanner(state.error, actionLabel = "Reintentar", onAction = retry) }
         }
         if (!ready) {
             items(2, key = { "account-skel-$it" }) { AccountSkeletonCard() }
